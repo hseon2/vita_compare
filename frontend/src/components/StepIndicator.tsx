@@ -18,9 +18,9 @@ export function StepIndicator({ sessionId, currentStep, reachability }: StepIndi
             className={[
               "flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors",
               isCurrent
-                ? "bg-neutral-900 text-white"
+                ? "bg-brand-700 text-white"
                 : reachable
-                  ? "border border-neutral-300 bg-white text-neutral-700 hover:border-neutral-400"
+                  ? "border border-brand-200 bg-white text-neutral-700 hover:border-brand-400"
                   : "bg-neutral-100 text-neutral-400",
             ].join(" ")}
           >

@@ -46,19 +46,6 @@ export interface PhotosGroupedResponse {
   missing_compos: Record<string, number[]>;
 }
 
-export type ClassifyErrorCode = "POSE_NOT_DETECTED" | "LOW_CONFIDENCE";
-
-export interface ClassifyWarning {
-  photo_id: string;
-  error_code: ClassifyErrorCode;
-  message: string;
-}
-
-export interface ClassifyResponse {
-  photos: PhotoOut[];
-  warnings: ClassifyWarning[];
-}
-
 export interface PhotoPatchRequest {
   compos_id?: number;
   rotation_deg?: number;

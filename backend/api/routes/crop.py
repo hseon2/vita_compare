@@ -7,7 +7,6 @@ PATCH는 파일에 손대지 않고 crop_box/rotation_deg/compos_id 좌표만 �
 from collections import Counter
 
 from fastapi import APIRouter
-from PIL import Image
 
 from api.errors import AppError
 from api.routes.upload import photo_to_out
@@ -20,7 +19,6 @@ from api.schemas import (
     PhotosGroupedResponse,
 )
 from models.schema import BodyCompRow
-from preprocessing import leveler
 from preprocessing.cropper import propose_crop_box
 from preprocessing.pose_detector import PoseNotDetectedError, detect_landmarks
 from state import session_store
@@ -75,15 +73,13 @@ def patch_photo(session_id: str, photo_id: str, body: PhotoPatchRequest) -> Phot
             record.classification_confidence = 1.0
             changed = True
 
-            # 구도만 재지정되고(크롭박스는 이번 요청에 없음) 새 구도 기준 AI 크롭이 아직 없으면
-            # 새로 제안한다. 이걸 안 하면 crop_box가 이전 구도(또는 미분류 상태의 (0,0,0,0))에
-            # 머물러 있다가 PPT 생성 시점에야 문제가 드러난다 (분류확인 화면에서 구도 드롭다운만
-            # 바꾸고 크롭 화면을 거치지 않는 흔한 경로).
+            # 구도만 재지정되고(크롭박스는 이번 요청에 없음) 새 구도 기준 크롭 제안이 아직 없으면
+            # 새로 계산한다 (수평각은 자동으로 건드리지 않는다 - 회전은 항상 사람이 슬라이더로
+            # 직접 조절한다는 원칙). 이걸 안 하면 crop_box가 이전 구도(또는 미분류 상태의
+            # (0,0,0,0))에 머물러 있다가 PPT 생성 시점에야 문제가 드러난다.
             if body.crop_box is None:
                 try:
                     landmarks = detect_landmarks(record.raw_path)
-                    orig_w, orig_h = Image.open(record.raw_path).size
-                    record.rotation_deg = leveler.compute_rotation_angle(landmarks, orig_w, orig_h)
                     record.crop_box = propose_crop_box(
                         record.raw_path, landmarks, record.rotation_deg, record.compos_id
                     )

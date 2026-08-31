@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import ReactCrop, { type PixelCrop } from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
 import type { CropBox, PhotoOut } from "../api/types";
@@ -17,9 +17,6 @@ interface CropCanvasProps {
   onUserResize?: (box: CropBox) => void;
 }
 
-// 전-후(최대 3장)를 나란히 그리드로 보여줘야 해서 개별 카드 폭을 넉넉하게 잡지 않는다.
-const DISPLAY_MAX_WIDTH = 340;
-
 export function CropCanvas({
   photo,
   rotationDeg,
@@ -28,6 +25,21 @@ export function CropCanvas({
   onBoxChange,
   onUserResize,
 }: CropCanvasProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  // 카드(그리드 셀) 실제 폭을 측정한다 - 고정폭(px)을 쓰면 사이드바/그리드 폭에 따라
+  // 사진이 카드 밖으로 넘치는 문제가 있었다.
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => setContainerWidth(el.clientWidth);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   const rawImgRef = useRef<HTMLImageElement | null>(null);
   const prevRotatedSizeRef = useRef<{ width: number; height: number } | null>(null);
   const rotationDegRef = useRef(rotationDeg);
@@ -100,23 +112,63 @@ export function CropCanvas({
 
   // cropBox(natural) -> displayCrop(표시 px) 동기화
   useEffect(() => {
-    if (!rotatedSize) return;
-    const displayedWidth = Math.min(DISPLAY_MAX_WIDTH, rotatedSize.width);
+    if (!rotatedSize || !containerWidth) return;
+    const displayedWidth = Math.min(containerWidth, rotatedSize.width);
     setDisplayCrop(naturalBoxToDisplayed(cropBox, displayedWidth, rotatedSize.width));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cropBox, rotatedSize]);
+  }, [cropBox, rotatedSize, containerWidth]);
 
-  if (!rotatedDataUrl || !rotatedSize || !displayCrop) {
-    return <div className="flex h-64 items-center justify-center text-sm text-neutral-400">이미지 준비 중...</div>;
-  }
+  return (
+    <div ref={containerRef} className="flex w-full flex-col gap-2">
+      {(!rotatedDataUrl || !rotatedSize || !displayCrop || !containerWidth) ? (
+        <div className="flex h-64 items-center justify-center text-sm text-neutral-400">이미지 준비 중...</div>
+      ) : (
+        <CropCanvasInner
+          photo={photo}
+          rotatedDataUrl={rotatedDataUrl}
+          rotatedSize={rotatedSize}
+          displayCrop={displayCrop}
+          containerWidth={containerWidth}
+          guideOverlayVisible={guideOverlayVisible}
+          setDisplayCrop={setDisplayCrop}
+          onBoxChange={onBoxChange}
+          onUserResize={onUserResize}
+        />
+      )}
+    </div>
+  );
+}
 
-  const displayedWidth = Math.min(DISPLAY_MAX_WIDTH, rotatedSize.width);
+interface CropCanvasInnerProps {
+  photo: PhotoOut;
+  rotatedDataUrl: string;
+  rotatedSize: { width: number; height: number };
+  displayCrop: PixelCrop;
+  containerWidth: number;
+  guideOverlayVisible: boolean;
+  setDisplayCrop: (c: PixelCrop) => void;
+  onBoxChange: (box: CropBox) => void;
+  onUserResize?: (box: CropBox) => void;
+}
+
+function CropCanvasInner({
+  photo,
+  rotatedDataUrl,
+  rotatedSize,
+  displayCrop,
+  containerWidth,
+  guideOverlayVisible,
+  setDisplayCrop,
+  onBoxChange,
+  onUserResize,
+}: CropCanvasInnerProps) {
+  const displayedWidth = Math.min(containerWidth, rotatedSize.width);
   const displayedHeight = rotatedSize.height * (displayedWidth / rotatedSize.width);
   const guideLineY = displayCrop.y + displayCrop.height / 2;
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="relative" style={{ width: displayedWidth }}>
+      <div className="relative" style={{ width: displayedWidth, maxWidth: "100%" }}>
         <ReactCrop
           crop={displayCrop}
           onChange={(c) => setDisplayCrop(c)}

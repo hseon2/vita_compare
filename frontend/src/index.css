@@ -1,5 +1,19 @@
 @import "tailwindcss";
 
+/* 한의원 로고(보라 계열 꽃잎)에서 뽑은 브랜드 팔레트 - 진보라(brand-800)에서 연라벤더(brand-50)까지 */
+@theme {
+  --color-brand-50: #f8f5fc;
+  --color-brand-100: #efe6f8;
+  --color-brand-200: #ded0ef;
+  --color-brand-300: #c7ade1;
+  --color-brand-400: #ab84cf;
+  --color-brand-500: #8f63b9;
+  --color-brand-600: #764aa0;
+  --color-brand-700: #5f3b84;
+  --color-brand-800: #4c2e77;
+  --color-brand-900: #362058;
+}
+
 :root {
   color-scheme: light;
 }
@@ -9,6 +23,10 @@ body {
   min-width: 360px;
   min-height: 100vh;
   font-family: "Pretendard Variable", Pretendard, Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  background-color: #f7f6f3;
+  background-color: #faf8fc;
   color: #28282a;
+}
+
+.ReactCrop {
+  --rc-focus-color: #8f63b9;
 }

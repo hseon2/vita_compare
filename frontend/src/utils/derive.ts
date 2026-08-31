@@ -15,12 +15,13 @@ export function getSetPairing(mode: Mode): Array<[SessionType, SessionType]> {
   return mode === "long" ? [["start", "mid"], ["mid", "end"]] : [["start", "end"]];
 }
 
-export type WizardStep = "upload" | "classify" | "crop" | "match" | "generate";
+// "분류 확인" 화면은 폐지되고 CropAdjustPage의 갤러리 섹션으로 통합되었다 (구도 재지정 +
+// 크롭/회전을 한 화면에서 처리).
+export type WizardStep = "upload" | "crop" | "match" | "generate";
 
 export const STEP_ORDER: Array<{ step: WizardStep; label: string; path: string }> = [
   { step: "upload", label: "업로드", path: "upload" },
-  { step: "classify", label: "분류 확인", path: "classify" },
-  { step: "crop", label: "수평/크롭", path: "crop" },
+  { step: "crop", label: "분류/크롭", path: "crop" },
   { step: "match", label: "매칭 확인", path: "match" },
   { step: "generate", label: "생성", path: "generate" },
 ];
@@ -29,7 +30,7 @@ export function computeReachability(
   resp: PhotosGroupedResponse | undefined,
 ): Record<WizardStep, boolean> {
   if (!resp) {
-    return { upload: true, classify: false, crop: false, match: false, generate: false };
+    return { upload: true, crop: false, match: false, generate: false };
   }
   const hasPhotos = resp.photos.length > 0;
   const classifiedPhotos = resp.photos.filter((p) => p.compos_id > 0);
@@ -38,8 +39,7 @@ export function computeReachability(
 
   return {
     upload: true,
-    classify: hasPhotos,
-    crop: anyClassified,
+    crop: hasPhotos,
     match: allConfirmed,
     generate: anyClassified,
   };

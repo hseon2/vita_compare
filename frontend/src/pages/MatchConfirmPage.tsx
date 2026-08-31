@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { BodyCompForm } from "../components/BodyCompForm";
+import { SESSION_TYPE_LABEL } from "../config/sessionTypes";
 import { useBodyComp, useSaveBodyComp } from "../hooks/useBodyComp";
 import { usePhotos } from "../hooks/usePhotos";
 import { deriveModeFromPhotos, getSetPairing } from "../utils/derive";
 import type { BodyCompRowIn, PhotoOut } from "../api/types";
-
-const SESSION_TYPE_LABEL: Record<string, string> = { start: "시작", mid: "중간", end: "마지막" };
 
 export function MatchConfirmPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -96,7 +95,7 @@ export function MatchConfirmPage() {
       <button
         type="button"
         onClick={() => navigate(`/s/${sessionId}/generate`)}
-        className="self-end rounded-lg bg-neutral-900 px-5 py-2.5 font-medium text-white"
+        className="self-end rounded-lg bg-brand-700 px-5 py-2.5 font-medium text-white transition-colors hover:bg-brand-800"
       >
         다음: 생성 →
       </button>

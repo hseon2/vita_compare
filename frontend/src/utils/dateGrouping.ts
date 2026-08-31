@@ -1,52 +1,44 @@
-import { parse as exifParse } from "exifr";
-import type { Mode, SessionType } from "../api/types";
+import type { SessionType } from "../api/types";
 
-export interface DateGroup {
-  date: string; // "YYYY-MM-DD"
-  files: File[];
+function fileDateKey(file: File): string {
+  return new Date(file.lastModified).toISOString().slice(0, 10);
 }
 
-async function getCaptureDate(file: File): Promise<Date> {
-  try {
-    const exif = await exifParse(file, { pick: ["DateTimeOriginal", "CreateDate", "ModifyDate"] });
-    const d: unknown = exif?.DateTimeOriginal ?? exif?.CreateDate ?? exif?.ModifyDate;
-    if (d instanceof Date && !Number.isNaN(d.getTime())) return d;
-  } catch {
-    // EXIF가 없는 포맷(PNG 등)이거나 파싱 실패 - 파일 수정일로 폴백
+/**
+ * 한 번에 선택한 사진들을 촬영일(파일 수정일) 기준으로 슬롯에 1차 배정한다.
+ * 정확한 분류가 아니라 초벌 구분이므로, 이후 화면에서 사람이 다시 확인/수정할 수 있어야 한다.
+ * - 표준 모드(2슬롯): 가장 이른 날짜 -> 시작일, 그 외 전부 -> 종료일
+ * - 장기 모드(3슬롯): 가장 이른 날짜 -> 시작일, 가장 늦은 날짜 -> 종료일, 그 사이 -> 중간일
+ * - 날짜를 하나도 구분할 수 없으면(전부 같은 날) 첫 슬롯에 전부 담는다.
+ */
+export function groupFilesByDate(
+  files: File[],
+  slots: SessionType[],
+): Partial<Record<SessionType, { date: string; files: File[] }>> {
+  if (files.length === 0) return {};
+  const dated = files.map((f) => ({ file: f, date: fileDateKey(f) }));
+  const uniqueDates = Array.from(new Set(dated.map((d) => d.date))).sort();
+
+  if (uniqueDates.length <= 1) {
+    const only = uniqueDates[0] ?? new Date().toISOString().slice(0, 10);
+    return { [slots[0]]: { date: only, files } };
   }
-  return new Date(file.lastModified);
-}
 
-function toDateKey(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
+  const minDate = uniqueDates[0];
+  const maxDate = uniqueDates[uniqueDates.length - 1];
+  const result: Partial<Record<SessionType, { date: string; files: File[] }>> = {};
 
-/** 파일들을 촬영일(EXIF 우선, 없으면 파일 수정일) 기준으로 날짜별 그룹으로 묶어 오름차순 정렬해 반환. */
-export async function groupFilesByDate(files: File[]): Promise<DateGroup[]> {
-  const map = new Map<string, File[]>();
-  for (const file of files) {
-    const date = await getCaptureDate(file);
-    const key = toDateKey(date);
-    const arr = map.get(key) ?? [];
-    arr.push(file);
-    map.set(key, arr);
+  if (slots.length === 2) {
+    result[slots[0]] = { date: minDate, files: dated.filter((d) => d.date === minDate).map((d) => d.file) };
+    result[slots[1]] = { date: maxDate, files: dated.filter((d) => d.date !== minDate).map((d) => d.file) };
+    return result;
   }
-  return Array.from(map.entries())
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([date, groupFiles]) => ({ date, files: groupFiles }));
-}
 
-export type SlotChoice = SessionType | "unassigned";
-
-/** 날짜 그룹 인덱스로부터 기본 슬롯을 추정: 가장 이른 날짜=시작, 가장 늦은 날짜=마지막,
- * 그 사이(장기모드만)=중간. 표준모드에서 중간 날짜가 있으면 자동 배정하지 않고 사용자가
- * 직접 고르게 한다 (섣부른 자동 병합으로 잘못된 사진이 섞이는 것을 방지). */
-export function defaultSlotForGroup(index: number, total: number, mode: Mode): SlotChoice {
-  if (total === 1) return "start";
-  if (index === 0) return "start";
-  if (index === total - 1) return "end";
-  return mode === "long" ? "mid" : "unassigned";
+  const mid = dated.filter((d) => d.date !== minDate && d.date !== maxDate);
+  result[slots[0]] = { date: minDate, files: dated.filter((d) => d.date === minDate).map((d) => d.file) };
+  if (mid.length > 0) {
+    result[slots[1]] = { date: mid[0].date, files: mid.map((d) => d.file) };
+  }
+  result[slots[2]] = { date: maxDate, files: dated.filter((d) => d.date === maxDate).map((d) => d.file) };
+  return result;
 }

@@ -15,3 +15,5 @@ node_modules/
 .DS_Store
 .claude/
 sample_image/
+frontend/public/guides/before-*.png
+frontend/public/guides/after-*.png

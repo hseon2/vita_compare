@@ -1,23 +1,35 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useParams } from "react-router-dom";
 import { WizardLayout } from "./layouts/WizardLayout";
-import { ClassifyReviewPage } from "./pages/ClassifyReviewPage";
 import { CropAdjustPage } from "./pages/CropAdjustPage";
 import { GeneratePage } from "./pages/GeneratePage";
 import { MatchConfirmPage } from "./pages/MatchConfirmPage";
-import { NewSessionPage } from "./pages/NewSessionPage";
 import { UploadPage } from "./pages/UploadPage";
+
+// "/s/:sessionId"만 왔을 때 "/s/:sessionId/upload"로, "classify"로 왔을 때 "crop"으로 보낸다.
+// (상대경로 Navigate 대신 절대경로로 직접 만들어서 라우트 중첩 구조와 무관하게 항상 정확히 이동한다)
+function IndexRedirect() {
+  const { sessionId } = useParams<{ sessionId: string }>();
+  return <Navigate to={`/s/${sessionId}/upload`} replace />;
+}
+function ClassifyRedirect() {
+  const { sessionId } = useParams<{ sessionId: string }>();
+  return <Navigate to={`/s/${sessionId}/crop`} replace />;
+}
 
 function App() {
   return (
     <Routes>
-      <Route path="/" element={<NewSessionPage />} />
-      <Route path="/s/:sessionId" element={<WizardLayout />}>
-        <Route index element={<Navigate to="upload" replace />} />
-        <Route path="upload" element={<UploadPage />} />
-        <Route path="classify" element={<ClassifyReviewPage />} />
-        <Route path="crop" element={<CropAdjustPage />} />
-        <Route path="match" element={<MatchConfirmPage />} />
-        <Route path="generate" element={<GeneratePage />} />
+      {/* "/"(세션 생성 전)과 "/s/:id/*"(세션 생성 후) 전부 같은 WizardLayout(헤더+스텝 인디케이터)
+          아래에서 렌더된다 - 예전엔 "/"만 레이아웃이 달라서 마치 다른 화면처럼 보였다. */}
+      <Route element={<WizardLayout />}>
+        <Route path="/" element={<UploadPage />} />
+        <Route path="/s/:sessionId" element={<IndexRedirect />} />
+        <Route path="/s/:sessionId/upload" element={<UploadPage />} />
+        {/* "분류 확인" 화면은 CropAdjustPage의 갤러리 섹션으로 통합됨 */}
+        <Route path="/s/:sessionId/classify" element={<ClassifyRedirect />} />
+        <Route path="/s/:sessionId/crop" element={<CropAdjustPage />} />
+        <Route path="/s/:sessionId/match" element={<MatchConfirmPage />} />
+        <Route path="/s/:sessionId/generate" element={<GeneratePage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

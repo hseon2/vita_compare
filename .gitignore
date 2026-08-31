@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+backend/venv/
+backend/.session_cache/
+backend/ml_assets/*.task
+.pytest_cache/
+.demo_output/
+logs/
+source/*/
+output/*/
+!source/.gitkeep
+!output/.gitkeep
+node_modules/
+.env
+.DS_Store
+.claude/
+sample_image/

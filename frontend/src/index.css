@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  min-width: 360px;
+  min-height: 100vh;
+  font-family: "Pretendard Variable", Pretendard, Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  background-color: #f7f6f3;
+  color: #28282a;
+}

@@ -70,6 +70,15 @@ export function OptionSelectPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPhoto?.photo_id, currentPhoto?.compos_id, currentPhoto?.session_type]);
 
+  // 구도 변경 저장은 내부적으로 포즈 재검출+크롭 재계산까지 도는 느린 비동기 작업이라, 옵션을
+  // 연달아 여러 번 클릭하면 나중에 시작한 저장이 먼저 끝나버려 결과적으로 "제일 처음 클릭한
+  // 값"이 최종적으로 남는 레이스가 있었다(실사용 중 발견). 클릭이 잠시 멈춘 뒤 마지막 선택
+  // 하나만 저장되도록 디바운스한다.
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+  }, []);
+
   if (photosQuery.isLoading) return <p className="py-8 text-sm text-neutral-400">불러오는 중...</p>;
   if (allPhotos.length === 0) {
     return <p className="py-8 text-sm text-neutral-500">업로드된 사진이 없습니다. 이전 단계로 돌아가주세요.</p>;
@@ -88,18 +97,31 @@ export function OptionSelectPage() {
     });
   }
 
+  function scheduleSave(sessionType: SessionType, composId: number) {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      saveOption(sessionType, composId);
+    }, 400);
+  }
+
   function selectSessionType(st: SessionType) {
     setEditSessionType(st);
-    saveOption(st, editComposId);
+    scheduleSave(st, editComposId);
   }
 
   function selectComposId(composId: number) {
     setEditComposId(composId);
-    if (editSessionType) saveOption(editSessionType, composId);
+    if (editSessionType) scheduleSave(editSessionType, composId);
   }
 
   async function handleNext() {
     if (!currentPhoto || !editSessionType || editComposId <= 0) return;
+    // 대기 중인 디바운스 저장이 있으면 취소한다 - 어차피 바로 아래에서 최신값으로 다시 저장한다.
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
     // 옵션 클릭 시점에 이미 저장됐지만, 아무것도 안 바꾸고(AI 추천값 그대로) 바로 "다음"을
     // 누르는 경우를 위해 여기서도 한 번 더 저장한다(이미 같은 값이면 그대로 덮어써도 무해함).
     await patchPhoto.mutateAsync({

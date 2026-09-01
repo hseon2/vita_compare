@@ -152,7 +152,11 @@ export function OptionSelectPage() {
 
   const passPhotos = reviewQueue.filter((p) => p.session_type === currentPhoto.session_type);
   const passIndex = passPhotos.findIndex((p) => p.photo_id === currentPhoto.photo_id) + 1;
-  // 저장하려는(=editSessionType) pass에 이미 다른 사진이 같은 구도로 확정돼 있으면 저장을 막는다.
+  // 저장하려는(=editSessionType) pass에 이미 다른 사진이 같은 구도로 확정돼 있는지 - 예전엔
+  // 이걸로 버튼을 아예 막았는데, AI가 서로 다른 사진 여러 장을 같은 구도로 추천하는 경우
+  // (드물지 않음) 사용자가 고를 수 있는 번호가 하나도 안 남아 "다음"이 영영 안 눌리는
+  // 막다른 골목이 됐다(실사용 중 발견). 이제는 경고만 하고 진행은 막지 않는다 - 중복은
+  // 크롭 단계에서도 이미 관대하게 처리한다(같은 자리엔 먼저 확정된 사진 하나만 사용).
   const duplicateConflict = allPhotos.some(
     (p) =>
       p.photo_id !== currentPhoto.photo_id &&
@@ -160,7 +164,7 @@ export function OptionSelectPage() {
       p.option_confirmed &&
       p.compos_id === editComposId,
   );
-  const canAdvance = !!editSessionType && editComposId > 0 && !duplicateConflict;
+  const canAdvance = !!editSessionType && editComposId > 0;
 
   return (
     <div className="flex flex-col gap-4 py-4 lg:flex-row lg:items-start">
@@ -196,7 +200,9 @@ export function OptionSelectPage() {
         </div>
 
         <div className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm">
-          <div className="relative mx-auto aspect-3/4 w-full max-w-sm overflow-hidden rounded-xl bg-neutral-100">
+          {/* 모바일에서는 세로 공간을 너무 많이 잡아먹어서(aspect-3/4 그대로면 화면 대부분을
+              차지) 높이를 제한해 절반 정도로 줄인다 - 큰 화면(sm 이상)에서는 원래대로. */}
+          <div className="relative mx-auto aspect-3/4 max-h-[38vh] w-full max-w-sm overflow-hidden rounded-xl bg-neutral-100 sm:max-h-none">
             <img
               src={currentPhoto.thumbnail_url}
               alt={currentPhoto.original_filename}
@@ -214,12 +220,16 @@ export function OptionSelectPage() {
           </div>
         </div>
 
-        {/* duplicateConflict일 땐 "다음"이 조용히 비활성화되기만 해서 왜 안 넘어가는지 알 수
-            없었다(실사용 중 발견된 버그) - 눈에 보이는 경고를 반드시 같이 보여준다. */}
         {duplicateConflict && (
           <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            이미 다른 사진이 이 구도로 확정돼 있어서 다음으로 넘어갈 수 없어요. 구도를 다시
-            선택해주세요.
+            이미 다른 사진이 이 구도로 확정돼 있어요. 그래도 진행은 되지만, 나중에 크롭
+            화면에서 한쪽만 반영될 수 있으니 가능하면 다른 번호로 바꿔주세요.
+          </p>
+        )}
+        {patchPhoto.isPending && (
+          <p className="flex items-center gap-1.5 text-xs text-neutral-400">
+            <span className="h-3 w-3 animate-spin rounded-full border-2 border-neutral-300 border-t-brand-600" />
+            저장 중 (포즈 재검출·크롭 계산)...
           </p>
         )}
 
@@ -290,21 +300,22 @@ export function OptionSelectPage() {
               const confirmedPhoto = allPhotos.find(
                 (p) => p.session_type === editSessionType && p.option_confirmed && p.compos_id === composId,
               );
-              // 이미 다른 사진이 이 번호로 확정돼 있으면 중복 배정을 막는다 - 지금 편집 중인
-              // 사진 자신이 이미 이 번호로 확정된 경우(재확인)는 예외로 허용한다.
+              // 이미 다른 사진이 이 번호로 확정돼 있는지 표시만 한다 - 예전엔 아예 못 고르게
+              // 막았는데, AI가 여러 사진을 같은 구도로 추천하면 고를 수 있는 번호가 하나도
+              // 안 남아 진행이 막히는 막다른 골목이 됐다(실사용 중 발견). 지금 편집 중인 사진
+              // 자신이 이미 이 번호로 확정된 경우(재확인)는 "타 사진 사용 중" 표시에서 제외.
               const takenByOther = !!confirmedPhoto && confirmedPhoto.photo_id !== currentPhoto.photo_id;
               return (
                 <button
                   key={composId}
                   type="button"
-                  title={takenByOther ? `${composId}. ${label} (이미 다른 사진에 배정됨)` : `${composId}. ${label}`}
-                  disabled={takenByOther}
+                  title={takenByOther ? `${composId}. ${label} (이미 다른 사진에 배정됨 - 그래도 선택 가능)` : `${composId}. ${label}`}
                   onClick={() => selectComposId(composId)}
                   className={`flex flex-col items-center gap-1 rounded-lg border p-1 ${
                     selected
                       ? "border-brand-700 bg-brand-50"
                       : takenByOther
-                        ? "cursor-not-allowed border-neutral-200 opacity-40"
+                        ? "border-amber-300 bg-amber-50/60 hover:bg-amber-50"
                         : "border-neutral-200 hover:bg-neutral-50"
                   }`}
                 >

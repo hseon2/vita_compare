@@ -11,41 +11,41 @@ IMG_W, IMG_H = 800, 1000
 
 def _full_body_landmarks(cx=400):
     return {
-        "NOSE": (cx, 100),
-        "LEFT_SHOULDER": (cx - 60, 180), "RIGHT_SHOULDER": (cx + 60, 180),
-        "LEFT_HIP": (cx - 50, 500), "RIGHT_HIP": (cx + 50, 500),
-        "LEFT_KNEE": (cx - 45, 700), "RIGHT_KNEE": (cx + 45, 700),
-        "LEFT_ANKLE": (cx - 40, 900), "RIGHT_ANKLE": (cx + 40, 900),
-        "LEFT_FOOT_INDEX": (cx - 40, 950), "RIGHT_FOOT_INDEX": (cx + 40, 950),
+        "NOSE": (cx, 100, 1.0),
+        "LEFT_SHOULDER": (cx - 60, 180, 1.0), "RIGHT_SHOULDER": (cx + 60, 180, 1.0),
+        "LEFT_HIP": (cx - 50, 500, 1.0), "RIGHT_HIP": (cx + 50, 500, 1.0),
+        "LEFT_KNEE": (cx - 45, 700, 1.0), "RIGHT_KNEE": (cx + 45, 700, 1.0),
+        "LEFT_ANKLE": (cx - 40, 900, 1.0), "RIGHT_ANKLE": (cx + 40, 900, 1.0),
+        "LEFT_FOOT_INDEX": (cx - 40, 950, 1.0), "RIGHT_FOOT_INDEX": (cx + 40, 950, 1.0),
     }
 
 
 def _upper_body_landmarks(wide=False, cx=400):
     lm = {
-        "NOSE": (cx, 150),
-        "LEFT_SHOULDER": (cx - 70, 250), "RIGHT_SHOULDER": (cx + 70, 250),
-        "LEFT_HIP": (cx - 60, 600), "RIGHT_HIP": (cx + 60, 600),
+        "NOSE": (cx, 150, 1.0),
+        "LEFT_SHOULDER": (cx - 70, 250, 1.0), "RIGHT_SHOULDER": (cx + 70, 250, 1.0),
+        "LEFT_HIP": (cx - 60, 600, 1.0), "RIGHT_HIP": (cx + 60, 600, 1.0),
     }
     if wide:
         lm.update({
-            "LEFT_ELBOW": (cx - 200, 260), "RIGHT_ELBOW": (cx + 200, 260),
-            "LEFT_WRIST": (cx - 320, 265), "RIGHT_WRIST": (cx + 320, 265),
+            "LEFT_ELBOW": (cx - 200, 260, 1.0), "RIGHT_ELBOW": (cx + 200, 260, 1.0),
+            "LEFT_WRIST": (cx - 320, 265, 1.0), "RIGHT_WRIST": (cx + 320, 265, 1.0),
         })
     return lm
 
 
 def _torso_landmarks(cx=400):
     return {
-        "LEFT_SHOULDER": (cx - 65, 100), "RIGHT_SHOULDER": (cx + 65, 100),
-        "LEFT_HIP": (cx - 55, 400), "RIGHT_HIP": (cx + 55, 400),
+        "LEFT_SHOULDER": (cx - 65, 100, 1.0), "RIGHT_SHOULDER": (cx + 65, 100, 1.0),
+        "LEFT_HIP": (cx - 55, 400, 1.0), "RIGHT_HIP": (cx + 55, 400, 1.0),
     }
 
 
 def _lower_body_landmarks(cx=400):
     return {
-        "LEFT_HIP": (cx - 55, 100), "RIGHT_HIP": (cx + 55, 100),
-        "LEFT_KNEE": (cx - 45, 400), "RIGHT_KNEE": (cx + 45, 400),
-        "LEFT_ANKLE": (cx - 40, 700), "RIGHT_ANKLE": (cx + 40, 700),
+        "LEFT_HIP": (cx - 55, 100, 1.0), "RIGHT_HIP": (cx + 55, 100, 1.0),
+        "LEFT_KNEE": (cx - 45, 400, 1.0), "RIGHT_KNEE": (cx + 45, 400, 1.0),
+        "LEFT_ANKLE": (cx - 40, 700, 1.0), "RIGHT_ANKLE": (cx + 40, 700, 1.0),
     }
 
 
@@ -101,6 +101,21 @@ def test_clamps_within_image_bounds_near_edge():
     x0, y0, x1, y1 = box
     assert x0 >= 0 and y0 >= 0 and x1 <= IMG_W and y1 <= IMG_H
     assert x1 > x0 and y1 > y0
+
+
+def test_low_visibility_outlier_landmark_is_ignored():
+    """실사용 중 발견된 버그: 가려진 관절(예: 하반신이 안 보이는 사진의 발목)에 대해 MediaPipe가
+    낮은 visibility로 화면 밖 좌표를 대략 찍어 반환해도, 그 좌표가 bbox를 화면 밖으로 끌고 나가
+    회전 여백(검은색)만 크롭되는 일이 없어야 한다 - visibility가 낮은 랜드마크는 앵커점에서
+    제외된다."""
+    landmarks = _full_body_landmarks(cx=400)
+    landmarks_with_outlier = dict(landmarks)
+    # 발목이 이미지 훨씬 밖(y=5000)에, 신뢰도는 아주 낮게(가려져서 대략 찍은 값) 잡혔다고 가정
+    landmarks_with_outlier["RIGHT_ANKLE"] = (440, 5000, 0.05)
+
+    clean_box = cropper.compute_crop_box(landmarks, IMG_W, IMG_H, compos_id=1)
+    outlier_box = cropper.compute_crop_box(landmarks_with_outlier, IMG_W, IMG_H, compos_id=1)
+    assert outlier_box == clean_box
 
 
 def test_no_landmarks_falls_back_to_full_image_ratio_box():

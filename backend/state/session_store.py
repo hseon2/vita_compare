@@ -41,6 +41,7 @@ class PhotoRecord:
     classification_confidence: float = 0.0
     manually_confirmed: bool = False
     pose_error: bool = False                               # PoseNotDetectedError 발생 여부
+    option_confirmed: bool = False                         # 2단계(옵션 선택)에서 사람이 확정했는지
 
 
 @dataclass

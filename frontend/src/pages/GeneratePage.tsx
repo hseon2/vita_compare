@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, ApiError } from "../api/client";
 import { useGenerateStatus, useStartGenerate } from "../hooks/useGenerate";
@@ -19,6 +19,19 @@ export function GeneratePage() {
       setStartError(e instanceof ApiError ? e.message : "생성 요청에 실패했습니다.");
     }
   }
+
+  // 매칭 확인 화면에서 "다음: 생성 →"을 누르면 이 화면으로 넘어오자마자 바로 생성이 시작된다 -
+  // 사람이 다시 "PPT 생성" 버튼을 누를 필요가 없다. 이미 생성이 시작됐거나(running/done) 실패한
+  // 적이 있으면(error, "다시 시도" 버튼으로 수동 재시도) 자동으로 다시 트리거하지 않는다.
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (autoStartedRef.current) return;
+    if (statusQuery.data && statusQuery.data.state === "idle") {
+      autoStartedRef.current = true;
+      handleStart();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusQuery.data]);
 
   function handleDownloadClick() {
     // 다운로드는 <a href> 네이티브 이동으로 처리한다 (백엔드가 스트리밍 후 세션을 서버에서 삭제함)
@@ -43,14 +56,7 @@ export function GeneratePage() {
   return (
     <div className="flex flex-col items-center gap-6 py-16">
       {(!status || status.state === "idle") && (
-        <button
-          type="button"
-          onClick={handleStart}
-          disabled={startGenerate.isPending}
-          className="rounded-xl bg-brand-700 px-6 py-3 text-base font-medium text-white shadow-sm transition-colors hover:bg-brand-800 disabled:opacity-50"
-        >
-          {startGenerate.isPending ? "요청 중..." : "PPT 생성"}
-        </button>
+        <p className="text-sm text-neutral-500">PPT 생성을 준비하고 있습니다...</p>
       )}
 
       {startError && <p className="text-sm text-red-600">{startError}</p>}

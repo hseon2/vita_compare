@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { BodyCompForm } from "../components/BodyCompForm";
+import { CroppedThumbnail } from "../components/CroppedThumbnail";
 import { SESSION_TYPE_LABEL } from "../config/sessionTypes";
 import { useBodyComp, useSaveBodyComp } from "../hooks/useBodyComp";
 import { usePhotos } from "../hooks/usePhotos";
@@ -65,15 +66,15 @@ export function MatchConfirmPage() {
                     </p>
                     {before && after ? (
                       <div className="flex gap-2">
-                        <img
-                          src={before.thumbnail_url}
+                        <CroppedThumbnail
+                          photo={before}
                           alt={`${label} 전`}
-                          className="aspect-[3/4] w-1/2 rounded object-cover"
+                          className="aspect-3/4 w-1/2 rounded object-cover"
                         />
-                        <img
-                          src={after.thumbnail_url}
+                        <CroppedThumbnail
+                          photo={after}
                           alt={`${label} 후`}
-                          className="aspect-[3/4] w-1/2 rounded object-cover"
+                          className="aspect-3/4 w-1/2 rounded object-cover"
                         />
                       </div>
                     ) : (

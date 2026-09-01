@@ -78,23 +78,25 @@ def transform_landmarks(
     rotation_deg: float,
     rotated_w: int,
     rotated_h: int,
-) -> dict[str, tuple[float, float]]:
-    """정규화된 원본 랜드마크를 회전 후 이미지의 픽셀 좌표로 변환.
+) -> dict[str, tuple[float, float, float]]:
+    """정규화된 원본 랜드마크를 회전 후 이미지의 픽셀 좌표(x, y, visibility)로 변환.
 
     rotated_w/rotated_h는 apply_rotation()이 실제로 반환한 이미지의 .size를 그대로 넘겨야
     한다 (PIL의 expand 캔버스 크기를 직접 재계산하면 반올림 방식 차이로 어긋날 수 있음).
     회전 변환 자체는 PIL.Image.rotate()가 사용하는 변환과 실측으로 검증된 동일한 공식을 쓴다.
+    visibility는 그대로 통과시킨다 - cropper.py가 낮은 신뢰도 랜드마크(가려져서 MediaPipe가
+    대략 찍은 좌표)를 앵커점 계산에서 걸러내는 데 사용한다.
     """
     theta = math.radians(rotation_deg)
     cos_t, sin_t = math.cos(theta), math.sin(theta)
     orig_cx, orig_cy = orig_w / 2, orig_h / 2
     new_cx, new_cy = rotated_w / 2, rotated_h / 2
 
-    result: dict[str, tuple[float, float]] = {}
-    for name, (x, y, _z, _v) in landmarks.items():
+    result: dict[str, tuple[float, float, float]] = {}
+    for name, (x, y, _z, v) in landmarks.items():
         px, py = x * orig_w, y * orig_h
         rx, ry = px - orig_cx, py - orig_cy
         nx = rx * cos_t + ry * sin_t
         ny = -rx * sin_t + ry * cos_t
-        result[name] = (nx + new_cx, ny + new_cy)
+        result[name] = (nx + new_cx, ny + new_cy, v)
     return result

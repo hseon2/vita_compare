@@ -24,6 +24,18 @@ UPPER_COMPOS = {4, 5, 9, 14, 15}
 LOWER_COMPOS = {6, 10, 16}
 
 Point = tuple[float, float]
+LandmarksPx = dict[str, tuple[float, float, float]]  # name -> (x, y, visibility)
+
+
+def _visible(landmarks_px: LandmarksPx, name: str) -> Point | None:
+    """visibility가 임계값 미만인 랜드마크(가려져서 MediaPipe가 대략 찍은 좌표)는 앵커점에서
+    제외한다. 필터링 없이 쓰면 화면 밖 위치로 잘못 추정된 좌표 하나가 bbox 전체를 캔버스 밖으로
+    끌고 나가, 회전으로 생긴 검은 여백(leveler.apply_rotation의 fillcolor)만 크롭되는 문제가
+    있었다."""
+    p = landmarks_px.get(name)
+    if p is None or p[2] < config.LANDMARK_VISIBILITY_THRESHOLD:
+        return None
+    return (p[0], p[1])
 
 
 def _category_for(compos_id: int) -> str:
@@ -38,33 +50,33 @@ def _category_for(compos_id: int) -> str:
     return "full"
 
 
-def _estimate_head_top_y(landmarks_px: dict[str, Point]) -> float | None:
+def _estimate_head_top_y(landmarks_px: LandmarksPx) -> float | None:
     """정수리 y좌표 추정. MediaPipe에는 정수리 랜드마크가 없어 코-어깨중점 거리로 근사한다."""
-    nose = landmarks_px.get("NOSE")
+    nose = _visible(landmarks_px, "NOSE")
     if nose is None:
         return None
-    shoulders = [landmarks_px[n] for n in ("LEFT_SHOULDER", "RIGHT_SHOULDER") if n in landmarks_px]
+    shoulders = [p for p in (_visible(landmarks_px, "LEFT_SHOULDER"), _visible(landmarks_px, "RIGHT_SHOULDER")) if p]
     if not shoulders:
         return nose[1]
     shoulder_mid_y = sum(p[1] for p in shoulders) / len(shoulders)
     return nose[1] - (shoulder_mid_y - nose[1]) * config.HEAD_MARGIN_FACTOR
 
 
-def _collect_anchor_points(landmarks_px: dict[str, Point], compos_id: int) -> list[Point]:
+def _collect_anchor_points(landmarks_px: LandmarksPx, compos_id: int) -> list[Point]:
     category = _category_for(compos_id)
     wide = compos_id in WIDE_COMPOS
     points: list[Point] = []
 
     if category in ("full", "upper", "torso"):
         for name in ("LEFT_SHOULDER", "RIGHT_SHOULDER"):
-            p = landmarks_px.get(name)
+            p = _visible(landmarks_px, name)
             if p is not None:
                 points.append(p)
 
     if category in ("full", "upper"):
         head_top_y = _estimate_head_top_y(landmarks_px)
         if head_top_y is not None:
-            nose = landmarks_px.get("NOSE")
+            nose = _visible(landmarks_px, "NOSE")
             head_x = nose[0] if nose is not None else (points[0][0] if points else None)
             if head_x is not None:
                 points.append((head_x, head_top_y))
@@ -72,18 +84,18 @@ def _collect_anchor_points(landmarks_px: dict[str, Point], compos_id: int) -> li
     if category in ("full", "lower"):
         for name in ("LEFT_HIP", "RIGHT_HIP", "LEFT_KNEE", "RIGHT_KNEE",
                       "LEFT_ANKLE", "RIGHT_ANKLE", "LEFT_FOOT_INDEX", "RIGHT_FOOT_INDEX"):
-            p = landmarks_px.get(name)
+            p = _visible(landmarks_px, name)
             if p is not None:
                 points.append(p)
     elif category in ("upper", "torso"):
         for name in ("LEFT_HIP", "RIGHT_HIP"):
-            p = landmarks_px.get(name)
+            p = _visible(landmarks_px, name)
             if p is not None:
                 points.append(p)
 
     if category == "upper" and wide:
         for name in ("LEFT_WRIST", "RIGHT_WRIST", "LEFT_ELBOW", "RIGHT_ELBOW"):
-            p = landmarks_px.get(name)
+            p = _visible(landmarks_px, name)
             if p is not None:
                 points.append(p)
 
@@ -132,7 +144,7 @@ def _fallback_box(img_w: int, img_h: int, ratio_w: int, ratio_h: int) -> tuple[i
 
 
 def compute_crop_box(
-    landmarks_px: dict[str, Point],
+    landmarks_px: LandmarksPx,
     rotated_w: int,
     rotated_h: int,
     compos_id: int,

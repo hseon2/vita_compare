@@ -11,9 +11,11 @@ landmarks는 dict[str, (x, y, z, visibility)] 형태로 반환한다. 요구사�
 3-tuple(x,y,z)만 언급하지만, 분류기(정면/후면 판별)와 크로퍼(신뢰 가능한 앵커 선택)가
 visibility를 필수로 사용하므로 4-tuple로 통일한다.
 """
+import numpy as np
 import mediapipe as mp
 from mediapipe.tasks.python import vision
 from mediapipe.tasks.python.core.base_options import BaseOptions
+from PIL import Image, UnidentifiedImageError
 
 import config
 
@@ -55,9 +57,15 @@ def detect_landmarks(image_path: str) -> dict[str, tuple[float, float, float, fl
     인물이 검출되지 않거나 이미지 파일을 읽을 수 없으면 PoseNotDetectedError를 발생시킨다
     (호출부에서 개별 사진 실패로 처리할 수 있도록 예외 종류를 하나로 통일).
     """
+    # mp.Image.create_from_file()은 알파 채널이 있는 PNG(스크린샷 등 아주 흔한 케이스)를
+    # "Failed to load image from file"로 로드 자체를 실패시킨다 - 사람 눈엔 멀쩡한 사진인데
+    # 포즈 미검출로 잘못 보고되는 원인이었다. PIL로 직접 열어 RGB로 변환한 뒤 numpy 배열로
+    # mp.Image를 만들면 이 제약을 우회할 수 있다.
     try:
-        mp_image = mp.Image.create_from_file(image_path)
-    except RuntimeError as exc:
+        with Image.open(image_path) as im:
+            rgb = im.convert("RGB")
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.asarray(rgb))
+    except (UnidentifiedImageError, OSError) as exc:
         raise PoseNotDetectedError(image_path) from exc
 
     result = _get_landmarker().detect(mp_image)

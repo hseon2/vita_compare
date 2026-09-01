@@ -27,6 +27,9 @@ POSE_MODEL_PATH = PROJECT_ROOT / "backend" / "ml_assets" / "pose_landmarker_full
 CONFIDENCE_THRESHOLD = 0.7  # 이 미만이면 검수 UI에서 "확인 필요" 배지
 POSE_MIN_DETECTION_CONFIDENCE = 0.5
 LANDMARK_VISIBILITY_THRESHOLD = 0.5
+# 정면/후면 판별용 코-귀 상대 깊이(z) 정규화 스케일. 실사진 실측 기준(정면 약 -0.64, 후면 약
+# 0.98)으로 잡은 값 - 이 값 이상으로 뚜렷하게 갈리면 confidence가 1.0에 가까워진다.
+VIEW_DEPTH_CONFIDENCE_SCALE = 0.3
 
 SIDE_WIDTH_RATIO_THRESHOLD = 0.35   # (어깨폭+골반폭)/2 / 몸통높이 < 이값이면 측면
 LEG_SPREAD_RATIO_THRESHOLD = 1.2    # 발목간거리 / 어깨폭 > 이값이면 다리벌림

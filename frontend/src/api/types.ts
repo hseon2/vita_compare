@@ -35,6 +35,7 @@ export interface PhotoOut {
   classification_confidence: number;
   low_confidence: boolean;
   manually_confirmed: boolean;
+  option_confirmed: boolean;
   pose_error: boolean;
   rotation_deg: number;
   crop_box: CropBox; // [0,0,0,0] = 아직 AI 크롭 전
@@ -47,12 +48,24 @@ export interface PhotosGroupedResponse {
   missing_compos: Record<string, number[]>;
 }
 
+export interface ClassifyWarning {
+  photo_id: string;
+  error_code: string;
+  message: string;
+}
+
+export interface ClassifyResponse {
+  photos: PhotoOut[];
+  warnings: ClassifyWarning[];
+}
+
 export interface PhotoPatchRequest {
   compos_id?: number;
   session_type?: SessionType;
   rotation_deg?: number;
   crop_box?: CropBox;
   manually_confirmed?: boolean;
+  option_confirmed?: boolean;
   sync_size?: boolean; // 서버 기본값 true
 }
 

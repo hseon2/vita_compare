@@ -84,27 +84,14 @@ def _add_photo(slide, path, cx, cy, box_w, box_h, tag=None, date_text=None):
         p.alignment = PP_ALIGN.CENTER
         run = p.add_run()
         run.text = date_text
-        run.font.size = Pt(13)
+        run.font.name = "맑은 고딕"
+        run.font.size = Pt(20)
         run.font.color.rgb = DARK
 
 
-def _add_photo_at(slide, path, x, y, w, h, tag=None, date_text=None):
+def _add_photo_at(slide, path, x, y, w, h, date_text=None):
     """이미 계산된 (x,y,w,h) 그대로 사진 배치 (비율 유지는 호출부에서 처리됨)"""
     slide.shapes.add_picture(path, x, y, width=w, height=h)
-
-    if tag:
-        tb = slide.shapes.add_textbox(x + Inches(0.05), y + Inches(0.05), Inches(0.6), Inches(0.35))
-        tf = tb.text_frame
-        tf.margin_left = Pt(4); tf.margin_right = Pt(4); tf.margin_top = Pt(2); tf.margin_bottom = Pt(2)
-        run = tf.paragraphs[0].add_run()
-        run.text = tag
-        run.font.size = Pt(13)
-        run.font.bold = True
-        run.font.color.rgb = DARK
-        tb.fill.solid()
-        tb.fill.fore_color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-        tb.line.color.rgb = LINE
-        tb.line.width = Pt(0.75)
 
     if date_text:
         dtb = slide.shapes.add_textbox(x, y + h + Inches(0.05), w, Inches(0.35))
@@ -113,7 +100,8 @@ def _add_photo_at(slide, path, x, y, w, h, tag=None, date_text=None):
         p.alignment = PP_ALIGN.CENTER
         run = p.add_run()
         run.text = date_text
-        run.font.size = Pt(13)
+        run.font.name = "맑은 고딕"
+        run.font.size = Pt(20)
         run.font.color.rgb = DARK
 
 
@@ -146,9 +134,9 @@ def add_photo_slide(prs, num, label, before_path, after_path, before_date=None, 
         after_y = top_margin + avail_h - ah
 
         _add_photo_at(slide, before_path, before_x, before_y, bw, bh,
-                      tag="전", date_text=before_date if show_dates else None)
+                      date_text=before_date if show_dates else None)
         _add_photo_at(slide, after_path, after_x, after_y, aw, ah,
-                      tag="후", date_text=after_date if show_dates else None)
+                      date_text=after_date if show_dates else None)
         return slide
 
     # 1) 각 사진을 세로 공간(avail_h) 기준으로 먼저 비율에 맞게 실제 크기 계산
@@ -173,9 +161,9 @@ def add_photo_slide(prs, num, label, before_path, after_path, before_date=None, 
     after_y = top_margin + (avail_h - ah) / 2
 
     _add_photo_at(slide, before_path, before_x, before_y, bw, bh,
-                  tag="전", date_text=before_date if show_dates else None)
+                  date_text=before_date if show_dates else None)
     _add_photo_at(slide, after_path, after_x, after_y, aw, ah,
-                  tag="후", date_text=after_date if show_dates else None)
+                  date_text=after_date if show_dates else None)
 
     return slide
 

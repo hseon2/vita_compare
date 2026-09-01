@@ -6,8 +6,10 @@
 계산한다 — 어느 한 단계라도 애매하면 전체 신뢰도가 떨어져 검수 UI의 "확인 필요" 배지가
 뜨도록 하기 위함이다.
 
-미해결 이슈(요구사항 5.2 명시): 정면 vs 후면 구분은 얼굴 랜드마크 신뢰도에 크게 의존하므로
-오분류 가능성이 있고, 검수 UI에서 수동 재지정이 항상 가능해야 한다.
+정면 vs 후면 구분(_classify_view)은 코-귀의 상대적 카메라 거리(z)로 판별한다 - 얼굴 랜드마크
+visibility는 뒷모습이어도 MediaPipe가 거의 항상 높게 반환해 실사용 중 오분류가 잦았다(실측으로
+확인, 회귀 테스트 참고). 그래도 z값 기반 판별 역시 100% 정확하지는 않으므로, 검수 UI에서
+수동 재지정이 항상 가능해야 한다는 원칙은 동일하게 유지한다.
 """
 import math
 
@@ -61,7 +63,14 @@ def _clamp01(v: float) -> float:
 def _classify_view(landmarks: Landmarks) -> tuple[str, float]:
     """정면(front)/측면(side)/후면(back) 판별.
 
-    어깨-골반 폭 비율로 측면 여부를 먼저 가르고, 정면/후면은 얼굴 랜드마크 가시성으로 구분한다.
+    어깨-골반 폭 비율로 측면 여부를 먼저 가르고, 정면/후면은 코-귀의 상대적 카메라 거리(z)로
+    구분한다. 예전엔 얼굴 랜드마크의 visibility로 판별했는데, 실사진으로 검증해보니 뒷모습이어도
+    MediaPipe가 얼굴 랜드마크 visibility를 거의 항상 ~1.0으로 반환해(모델이 "있을 법한" 위치를
+    자신있게 추정할 뿐, 실제로 카메라에 보이는지와는 무관) 정면/후면을 전혀 구분하지 못했다
+    (실사용 중 팔벌림 뒷모습 사진이 정면으로 오분류되는 문제로 확인됨).
+    반면 z값(카메라와의 상대 거리, 음수=카메라에 더 가까움)은 방향에 따라 뚜렷이 갈린다 -
+    얼굴이 카메라를 향하면 코가 귀보다 카메라에 가깝고(코 z < 귀 z), 등을 돌리면 코가 뒤통수보다
+    멀어진다(코 z > 귀 z).
     """
     l_sh, r_sh = landmarks.get("LEFT_SHOULDER"), landmarks.get("RIGHT_SHOULDER")
     l_hip, r_hip = landmarks.get("LEFT_HIP"), landmarks.get("RIGHT_HIP")
@@ -83,6 +92,16 @@ def _classify_view(landmarks: Landmarks) -> tuple[str, float]:
         confidence = _clamp01((threshold - width_ratio) / threshold)
         return "side", confidence
 
+    nose = landmarks.get("NOSE")
+    ears = [landmarks[n] for n in ("LEFT_EAR", "RIGHT_EAR") if n in landmarks]
+    if nose is not None and ears:
+        ear_z = sum(e[2] for e in ears) / len(ears)
+        normalized_depth = (nose[2] - ear_z) / torso_h  # 체형/촬영거리에 따른 스케일 차이 보정
+        view = "back" if normalized_depth > 0 else "front"
+        confidence = _clamp01(abs(normalized_depth) / config.VIEW_DEPTH_CONFIDENCE_SCALE)
+        return view, confidence
+
+    # z 정보를 쓸 수 없는 예외적인 경우에만 예전 방식(얼굴 랜드마크 visibility)으로 폴백
     face_names = ["NOSE", "LEFT_EYE", "RIGHT_EYE", "LEFT_EAR", "RIGHT_EAR"]
     face_vis = _mean_visibility(landmarks, face_names)
     view = "front" if face_vis >= config.LANDMARK_VISIBILITY_THRESHOLD else "back"
@@ -151,7 +170,11 @@ def _classify_leg_spread(landmarks: Landmarks) -> tuple[str, float]:
 
 
 def _classify_arm_spread(landmarks: Landmarks) -> tuple[str, float]:
-    """팔벌림 여부 판별 (상반신 구도 5, 15번 후보에서만 사용). 팔꿈치-어깨 각도가 수평에 가까운지."""
+    """팔벌림 여부 판별. 팔꿈치-어깨 각도가 수평에 가까운지로 본다.
+
+    다리(무릎/발목)까지 보이는 전신 사진에서도 팔을 벌린 자세가 나올 수 있는데, 5/15번
+    (상반신 팔벌림) 구도는 원래 상반신 프레임을 전제로 정의돼 있다. classify()가 이 결과를
+    보고 팔이 뚜렷이 벌어져 있으면 전신/상반신 여부와 무관하게 5/15번으로 우선 분류한다."""
     sides = [("LEFT_SHOULDER", "LEFT_ELBOW"), ("RIGHT_SHOULDER", "RIGHT_ELBOW")]
     angles = []
     for sh_name, el_name in sides:
@@ -182,10 +205,18 @@ def classify(landmarks: Landmarks) -> tuple[int, float]:
     variant: str | None = None
     variant_conf = 1.0
 
-    if region == "full" and view in ("front", "back"):
+    # 팔벌림 자세는 다리까지 보이는 전신 사진에서도 나타날 수 있다 - 팔이 뚜렷하게 벌어져
+    # 있으면 원래 판별된 region(전신/체간 등)과 무관하게 5/15번(상반신 팔벌림) 구도로
+    # 우선 분류한다.
+    arm_variant, arm_conf = (
+        _classify_arm_spread(landmarks) if view in ("front", "back") else ("normal", 0.0)
+    )
+    if arm_variant == "arms_spread":
+        region, variant, variant_conf = "upper", "arms_spread", arm_conf
+    elif region == "full" and view in ("front", "back"):
         variant, variant_conf = _classify_leg_spread(landmarks)
     elif region == "upper" and view in ("front", "back"):
-        variant, variant_conf = _classify_arm_spread(landmarks)
+        variant, variant_conf = arm_variant, arm_conf
 
     key = (view, region, variant)
     compos_id = _COMPOS_TABLE.get(key)

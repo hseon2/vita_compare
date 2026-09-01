@@ -1,6 +1,7 @@
 import type {
   BodyCompGetResponse,
   BodyCompRowIn,
+  ClassifyResponse,
   GenerateStatusOut,
   Mode,
   PhotoOut,
@@ -78,6 +79,9 @@ export const api = {
 
   getPhotos: (sessionId: string) =>
     apiFetch<PhotosGroupedResponse>(`/api/sessions/${sessionId}/photos`),
+
+  classifySession: (sessionId: string) =>
+    apiFetch<ClassifyResponse>(`/api/sessions/${sessionId}/classify`, { method: "POST" }),
 
   patchPhoto: (sessionId: string, photoId: string, patch: PhotoPatchRequest) =>
     apiFetch<PhotoOut>(`/api/sessions/${sessionId}/photos/${photoId}`, {

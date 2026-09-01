@@ -1,0 +1,15 @@
+{
+  "name": "vita-compare",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "dev:all": "concurrently -n backend,frontend -c blue,green \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && venv\\Scripts\\python -m uvicorn api.main:app --reload",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "install:frontend": "npm --prefix frontend install",
+    "install:backend": "python -m venv backend\\venv && backend\\venv\\Scripts\\python -m pip install -r backend\\requirements.txt"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

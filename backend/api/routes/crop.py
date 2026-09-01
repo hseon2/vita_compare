@@ -69,7 +69,11 @@ def patch_photo(session_id: str, photo_id: str, body: PhotoPatchRequest) -> Phot
         if record is None:
             raise AppError("PHOTO_NOT_FOUND", f"사진을 찾을 수 없습니다: {photo_id}", 404)
 
-        changed = False
+        # manually_confirmed(크롭 확정)은 실제 회전/크롭 변경에만 자동으로 연동한다 - 구도/
+        # 세션타입 변경(2단계 옵션 선택)은 크롭을 아직 건드리지 않았으므로 크롭 확정으로 치지
+        # 않는다 (안 그러면 옵션 선택만 하고 3단계 크롭 화면에 들어갔을 때 전부 "이미 확인됨"
+        # 상태가 되어 순차 크롭이 무의미해진다).
+        crop_changed = False
         if body.session_type is not None and body.session_type != record.session_type:
             # 미리보기에서 시작일<->종료일 섹션으로 드래그해 옮긴 경우 - 실제 파일도 해당
             # session_type 하위 폴더로 옮겨야 raw_path가 계속 유효하다.
@@ -89,11 +93,9 @@ def patch_photo(session_id: str, photo_id: str, body: PhotoPatchRequest) -> Phot
                     old_cropped.rename(new_cropped_path)
                     record.cropped_path = str(new_cropped_path)
             record.session_type = body.session_type
-            changed = True
         if body.compos_id is not None:
             record.compos_id = body.compos_id
             record.classification_confidence = 1.0
-            changed = True
 
             # 구도만 재지정되고(크롭박스는 이번 요청에 없음) 새 구도 기준 크롭 제안이 아직 없으면
             # 새로 계산한다 (수평각은 자동으로 건드리지 않는다 - 회전은 항상 사람이 슬라이더로
@@ -112,15 +114,18 @@ def patch_photo(session_id: str, photo_id: str, body: PhotoPatchRequest) -> Phot
                     # 구도 비율 기준 기본 박스로 안전하게 대체한다.
         if body.rotation_deg is not None:
             record.rotation_deg = body.rotation_deg
-            changed = True
+            crop_changed = True
         if body.crop_box is not None:
             record.crop_box = body.crop_box
-            changed = True
+            crop_changed = True
 
         if body.manually_confirmed is not None:
             record.manually_confirmed = body.manually_confirmed
-        elif changed:
+        elif crop_changed:
             record.manually_confirmed = True
+
+        if body.option_confirmed is not None:
+            record.option_confirmed = body.option_confirmed
 
         if body.crop_box is not None and body.sync_size and record.compos_id > 0:
             new_w = body.crop_box[2] - body.crop_box[0]

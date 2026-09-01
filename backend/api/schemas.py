@@ -34,6 +34,7 @@ class PhotoOut(BaseModel):
     classification_confidence: float
     low_confidence: bool
     manually_confirmed: bool
+    option_confirmed: bool
     pose_error: bool
     rotation_deg: float
     crop_box: tuple[int, int, int, int]
@@ -63,6 +64,7 @@ class PhotoPatchRequest(BaseModel):
     rotation_deg: float | None = None
     crop_box: tuple[int, int, int, int] | None = None
     manually_confirmed: bool | None = None
+    option_confirmed: bool | None = None
     sync_size: bool = True  # crop_box 크기 변경시 동일 구도의 다른 세션타입에도 동기화
 
 

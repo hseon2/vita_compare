@@ -32,6 +32,7 @@ def photo_to_out(photo_id: str, record: PhotoRecord) -> PhotoOut:
         classification_confidence=record.classification_confidence,
         low_confidence=record.classification_confidence < config.CONFIDENCE_THRESHOLD,
         manually_confirmed=record.manually_confirmed,
+        option_confirmed=record.option_confirmed,
         pose_error=record.pose_error,
         rotation_deg=record.rotation_deg,
         crop_box=tuple(record.crop_box),

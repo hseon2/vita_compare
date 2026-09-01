@@ -179,7 +179,7 @@ export function UploadPage() {
       setError("환자명을 입력해주세요.");
       return;
     }
-    navigate(`/s/${sessionId}/crop`);
+    navigate(`/s/${sessionId}/options`);
   }
 
   // "/"과 "/s/:id/upload"는 이제 WizardLayout이 헤더+스텝 인디케이터를 항상 동일하게
@@ -288,7 +288,7 @@ export function UploadPage() {
         onClick={goNext}
         className="mt-2 self-end rounded-xl bg-brand-700 px-5 py-2.5 font-medium text-white shadow-sm transition-colors hover:bg-brand-800 disabled:opacity-50"
       >
-        다음: 분류/크롭 →
+        다음: 옵션 선택 →
       </button>
 
       {lightboxPhoto && (

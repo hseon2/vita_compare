@@ -31,6 +31,10 @@ def classify_session_photos(session_id: str) -> ClassifyResponse:
 
     def mutator(s: SessionState) -> None:
         for photo_id, record in s.photos.items():
+            # 옵션 선택(2단계)에서 사람이 이미 확정한 사진은 다시 덮어쓰지 않는다 - 사진을
+            # 추가로 더 올린 뒤 재호출해도 이미 확정된 구도/회전/크롭이 안전하게 유지된다.
+            if record.option_confirmed:
+                continue
             try:
                 landmarks = detect_landmarks(record.raw_path)
             except PoseNotDetectedError:

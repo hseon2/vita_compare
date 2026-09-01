@@ -29,6 +29,7 @@ export interface SessionMetaResponse {
 export interface PhotoOut {
   photo_id: string;
   session_type: SessionType;
+  original_filename: string;
   compos_id: number; // 0 = 미분류
   compos_label: string;
   classification_confidence: number;
@@ -48,6 +49,7 @@ export interface PhotosGroupedResponse {
 
 export interface PhotoPatchRequest {
   compos_id?: number;
+  session_type?: SessionType;
   rotation_deg?: number;
   crop_box?: CropBox;
   manually_confirmed?: boolean;

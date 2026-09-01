@@ -26,6 +26,7 @@ def photo_to_out(photo_id: str, record: PhotoRecord) -> PhotoOut:
     return PhotoOut(
         photo_id=photo_id,
         session_type=record.session_type,
+        original_filename=record.original_filename,
         compos_id=record.compos_id,
         compos_label=label_for(record.compos_id) if record.compos_id else "미분류",
         classification_confidence=record.classification_confidence,
@@ -109,7 +110,12 @@ def upload_photos(
             raw_path = raw_dir / f"{photo_id}{ext}"
             with open(raw_path, "wb") as out:
                 out.write(f.file.read())
-            record = PhotoRecord(photo_id=photo_id, session_type=session_type, raw_path=str(raw_path))
+            record = PhotoRecord(
+                photo_id=photo_id,
+                session_type=session_type,
+                raw_path=str(raw_path),
+                original_filename=f.filename or "",
+            )
             s.photos[photo_id] = record
             created.append(photo_to_out(photo_id, record))
 

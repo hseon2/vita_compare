@@ -222,7 +222,7 @@ export function CropAdjustPage() {
   return (
     <div className="flex flex-col gap-4 py-4 lg:flex-row lg:items-start">
       {/* 좌측: 사진 목록 - 사진별 구도를 사람이 직접 지정 */}
-      <aside className="flex w-full flex-col gap-3 rounded-xl border border-neutral-200 bg-white p-3 lg:sticky lg:top-4 lg:w-60 lg:max-h-[calc(100vh-2rem)] lg:shrink-0 lg:overflow-y-auto">
+      <aside className="flex w-full flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm lg:sticky lg:top-4 lg:w-60 lg:max-h-[calc(100vh-2rem)] lg:shrink-0 lg:overflow-y-auto">
         <div className="flex items-center justify-between gap-2">
           <button
             type="button"
@@ -236,7 +236,7 @@ export function CropAdjustPage() {
         <p className="-mt-2 text-xs text-neutral-400">사진을 클릭해 선택한 뒤, 우측 탭에서 구도를 선택하세요</p>
 
         {reassignSourcePhoto && (
-          <div className="flex flex-col gap-1.5 rounded-lg border border-brand-300 bg-brand-50 p-2 text-xs text-brand-800">
+          <div className="flex flex-col gap-1.5 rounded-xl border border-brand-300 bg-brand-50 p-2 text-xs text-brand-800">
             <span>사진이 선택되었습니다. 우측 탭을 클릭해 구도를 지정하세요.</span>
             <div className="flex items-center gap-2">
               <button
@@ -260,7 +260,7 @@ export function CropAdjustPage() {
           <button
             type="button"
             onClick={() => setAddingPhotos(true)}
-            className="rounded-lg border border-neutral-300 px-2.5 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
+            className="rounded-xl border border-neutral-300 px-2.5 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
           >
             + 사진 추가 업로드
           </button>
@@ -269,7 +269,7 @@ export function CropAdjustPage() {
         {galleryOpen && (
           <>
             {addingPhotos && (
-              <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+              <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
                 <div className="mb-2 flex items-center justify-between">
                   <p className="text-xs font-medium text-neutral-600">사진 추가 업로드</p>
                   <button
@@ -285,7 +285,7 @@ export function CropAdjustPage() {
                     <UploadSlot
                       key={st}
                       sessionType={st}
-                      existingCount={allPhotos.filter((p) => p.session_type === st).length}
+                      photos={allPhotos.filter((p) => p.session_type === st)}
                       date={addingDates[st]}
                       onDateChange={(v) => setAddingDates((d) => ({ ...d, [st]: v }))}
                       onFilesSelected={(files) => handleAddPhotos(st, files)}
@@ -334,7 +334,7 @@ export function CropAdjustPage() {
         <>
           {/* 항상 16개 구도 탭을 전부 보여준다 - 아직 사진이 없는 탭도 눌러서 미리 볼 수 있다 */}
           <div
-            className={`flex flex-wrap gap-1.5 rounded-lg p-1.5 ${
+            className={`flex flex-wrap gap-1.5 rounded-xl p-1.5 ${
               reassignSourcePhoto ? "bg-brand-50 ring-1 ring-brand-300" : ""
             }`}
           >
@@ -380,7 +380,7 @@ export function CropAdjustPage() {
                       return (
                         <div
                           key={sessionType}
-                          className="flex flex-col gap-2 rounded-xl border border-red-300 bg-red-50 p-3"
+                          className="flex flex-col gap-2 rounded-2xl border border-red-300 bg-red-50 p-3"
                         >
                           <h3 className="text-sm font-semibold text-red-700">
                             {SESSION_TYPE_LABEL[sessionType]} - 중복 {photos.length}장
@@ -408,7 +408,7 @@ export function CropAdjustPage() {
                     if (!edit) return null;
                     const guideImg = getGuideImageUrl(p.compos_id, sideForSessionType(p.session_type));
                     return (
-                      <div key={p.photo_id} className="flex flex-col gap-3 rounded-xl border border-neutral-200 bg-white p-3">
+                      <div key={p.photo_id} className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             {guideImg && (
@@ -444,7 +444,7 @@ export function CropAdjustPage() {
                   <button
                     type="button"
                     onClick={confirmAllAsIs}
-                    className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
+                    className="rounded-xl border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
                   >
                     현재 크롭 그대로 확정
                   </button>
@@ -452,7 +452,7 @@ export function CropAdjustPage() {
                     type="button"
                     onClick={saveAll}
                     disabled={patchPhoto.isPending}
-                    className="rounded-lg bg-brand-700 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-brand-800 disabled:opacity-50"
+                    className="rounded-xl bg-brand-700 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-brand-800 disabled:opacity-50"
                   >
                     {patchPhoto.isPending ? "저장 중..." : "이 구도 전체 저장"}
                   </button>
@@ -464,7 +464,7 @@ export function CropAdjustPage() {
         <button
           type="button"
           onClick={() => navigate(`/s/${sessionId}/match`)}
-          className="self-end rounded-lg bg-brand-700 px-5 py-2.5 font-medium text-white transition-colors hover:bg-brand-800"
+          className="self-end rounded-xl bg-brand-700 px-5 py-2.5 font-medium text-white shadow-sm transition-colors hover:bg-brand-800"
         >
           다음: 매칭 확인 →
         </button>

@@ -59,7 +59,7 @@ export function MatchConfirmPage() {
                 if (!before && !after) return null;
                 const label = before?.compos_label ?? after?.compos_label ?? "";
                 return (
-                  <div key={cid} className="rounded-xl border border-neutral-200 bg-white p-3">
+                  <div key={cid} className="rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm">
                     <p className="mb-2 text-xs font-medium text-neutral-600">
                       {cid}. {label}
                     </p>
@@ -95,7 +95,7 @@ export function MatchConfirmPage() {
       <button
         type="button"
         onClick={() => navigate(`/s/${sessionId}/generate`)}
-        className="self-end rounded-lg bg-brand-700 px-5 py-2.5 font-medium text-white transition-colors hover:bg-brand-800"
+        className="self-end rounded-xl bg-brand-700 px-5 py-2.5 font-medium text-white shadow-sm transition-colors hover:bg-brand-800"
       >
         다음: 생성 →
       </button>

@@ -3,15 +3,23 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, ApiError } from "../api/client";
 import { BatchUploadSlot } from "../components/BatchUploadSlot";
+import { ImageLightbox } from "../components/ImageLightbox";
 import { UploadSlot } from "../components/UploadSlot";
+import { useDeletePhoto } from "../hooks/useDeletePhoto";
+import { usePatchPhoto } from "../hooks/usePatchPhoto";
 import { photosQueryKey, usePhotos } from "../hooks/usePhotos";
 import { sessionMetaQueryKey, useSessionMeta, useUpdateSessionMeta } from "../hooks/useSessionMeta";
 import { useWizardStore } from "../store/wizardStore";
 import { groupFilesByDate } from "../utils/dateGrouping";
 import { clearLastSessionId, getLastSessionId, setLastSessionId } from "../utils/sessionCache";
-import type { Mode, SessionType } from "../api/types";
+import type { Mode, PhotoOut, SessionType } from "../api/types";
 
 const TODAY = new Date().toISOString().slice(0, 10);
+const PLACEHOLDER_NAME_RE = /^이름없음-[a-z0-9]{4}$/;
+
+function randomPlaceholderName(): string {
+  return `이름없음-${Math.random().toString(36).slice(2, 6)}`;
+}
 
 // "/" (세션 생성 전)과 "/s/:sessionId/upload" (세션 생성 후, 추가 업로드) 둘 다 이 화면
 // 하나로 처리한다 - 예전엔 화면이 둘로 나뉘어 있었지만 기능이 사실상 같아서 통합했다.
@@ -28,12 +36,15 @@ export function UploadPage() {
   const photosQuery = usePhotos(sessionId);
   const metaQuery = useSessionMeta(sessionId);
   const updateMeta = useUpdateSessionMeta(sessionId ?? "");
+  const patchPhoto = usePatchPhoto(sessionId ?? "");
+  const deletePhoto = useDeletePhoto(sessionId ?? "");
 
   const [dates, setDates] = useState<Record<SessionType, string>>({ start: TODAY, mid: TODAY, end: TODAY });
   const [uploadingSlot, setUploadingSlot] = useState<SessionType | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lightboxPhoto, setLightboxPhoto] = useState<PhotoOut | null>(null);
   // 체크하면 시작/중간/종료 사진을 따로따로가 아니라 한꺼번에 선택하고, 촬영일(파일 날짜) 기준으로
-  // 자동 구분해서 업로드한다. 정확한 분류가 아니므로 어긋나면 이후 화면에서 다시 확인해야 한다.
+  // 자동 구분해서 업로드한다. 정확한 분류가 아니므로 어긋나면 아래 섹션에서 드래그로 옮길 수 있다.
   const [batchMode, setBatchMode] = useState(false);
   const [batchUploading, setBatchUploading] = useState(false);
 
@@ -63,10 +74,10 @@ export function UploadPage() {
   }
   const patientName = sessionId ? nameDraft : draft.patientName;
 
-  const countsByType = useMemo(() => {
-    const counts: Record<SessionType, number> = { start: 0, mid: 0, end: 0 };
-    for (const p of photosQuery.data?.photos ?? []) counts[p.session_type]++;
-    return counts;
+  const photosByType = useMemo(() => {
+    const map: Record<SessionType, PhotoOut[]> = { start: [], mid: [], end: [] };
+    for (const p of photosQuery.data?.photos ?? []) map[p.session_type].push(p);
+    return map;
   }, [photosQuery.data]);
 
   async function handleFiles(st: SessionType, files: File[]): Promise<boolean> {
@@ -75,9 +86,8 @@ export function UploadPage() {
     try {
       let sid = sessionId;
       if (!sid) {
-        const name = draft.patientName.trim();
-        if (!name) throw new Error("환자명을 입력해주세요.");
-        const res = await api.createSession(name, draft.mode);
+        // 환자명을 나중에 입력해도 되므로, 비어있으면 임시 이름으로 세션만 먼저 만든다.
+        const res = await api.createSession(draft.patientName.trim() || randomPlaceholderName(), draft.mode);
         sid = res.session_id;
       }
       await api.uploadPhotos(sid, st, dates[st], files);
@@ -105,9 +115,7 @@ export function UploadPage() {
     try {
       let sid = sessionId;
       if (!sid) {
-        const name = draft.patientName.trim();
-        if (!name) throw new Error("환자명을 입력해주세요.");
-        const res = await api.createSession(name, draft.mode);
+        const res = await api.createSession(draft.patientName.trim() || randomPlaceholderName(), draft.mode);
         sid = res.session_id;
       }
       const groups = groupFilesByDate(files, slots);
@@ -133,6 +141,17 @@ export function UploadPage() {
     }
   }
 
+  function handleDeletePhoto(photoId: string) {
+    if (!window.confirm("이 사진을 삭제할까요?")) return;
+    deletePhoto.mutate(photoId);
+  }
+
+  function handleMovePhoto(photoId: string, targetSessionType: SessionType) {
+    const photo = photosQuery.data?.photos.find((p) => p.photo_id === photoId);
+    if (!photo || photo.session_type === targetSessionType) return;
+    patchPhoto.mutate({ photoId, patch: { session_type: targetSessionType } });
+  }
+
   // 입력한 환자명/모드/업로드 진행 상태를 전부 지우고 새 세션을 시작할 수 있게 한다.
   // 서버의 이전 세션 자체를 삭제하지는 않는다(삭제 API가 없음) - 그냥 참조를 놓고 새로 시작.
   function handleReset() {
@@ -155,6 +174,11 @@ export function UploadPage() {
 
   function goNext() {
     if (!sessionId || !photosQuery.data?.photos.length) return;
+    const trimmed = patientName.trim();
+    if (!trimmed || PLACEHOLDER_NAME_RE.test(trimmed)) {
+      setError("환자명을 입력해주세요.");
+      return;
+    }
     navigate(`/s/${sessionId}/crop`);
   }
 
@@ -168,27 +192,27 @@ export function UploadPage() {
         <button
           type="button"
           onClick={handleReset}
-          className="shrink-0 rounded-lg border border-neutral-300 px-2.5 py-1 text-xs font-medium text-neutral-500 hover:bg-neutral-50 hover:text-neutral-700"
+          className="shrink-0 rounded-xl border border-neutral-300 px-2.5 py-1 text-xs font-medium text-neutral-500 hover:bg-neutral-50 hover:text-neutral-700"
         >
           초기화
         </button>
       </div>
 
       {error && (
-        <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>
+        <div className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>
       )}
 
       {lastSessionId && (
         <button
           type="button"
           onClick={() => navigate(`/s/${lastSessionId}/upload`)}
-          className="w-full rounded-lg border border-dashed border-neutral-300 px-4 py-3 text-left text-sm text-neutral-600 hover:bg-neutral-50"
+          className="w-full rounded-xl border border-dashed border-neutral-300 px-4 py-3 text-left text-sm text-neutral-600 hover:bg-neutral-50"
         >
           이전 작업 이어하기 →
         </button>
       )}
 
-      <div className="flex flex-col gap-3 rounded-xl border border-neutral-200 bg-white p-4">
+      <div className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
         <label className="flex flex-col gap-1 text-sm">
           <span className="font-medium text-neutral-700">환자명</span>
           <input
@@ -207,7 +231,7 @@ export function UploadPage() {
                 key={m}
                 type="button"
                 onClick={() => handleModeChange(m)}
-                className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium ${
+                className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium ${
                   mode === m
                     ? "border-brand-700 bg-brand-700 text-white"
                     : "border-neutral-300 text-neutral-600"
@@ -217,9 +241,9 @@ export function UploadPage() {
               </button>
             ))}
           </div>
-          {mode === "standard" && countsByType.mid > 0 && (
+          {mode === "standard" && photosByType.mid.length > 0 && (
             <p className="mt-1 text-xs text-amber-600">
-              중간일 사진이 {countsByType.mid}장 있습니다. 위에서 "장기"로 바꾸면 중간일 슬롯이 표시됩니다.
+              중간일 사진이 {photosByType.mid.length}장 있습니다. 위에서 "장기"로 바꾸면 중간일 슬롯이 표시됩니다.
             </p>
           )}
         </div>
@@ -235,36 +259,45 @@ export function UploadPage() {
         전/후 사진 한 번에 업로드 (촬영일로 자동 구분)
       </label>
 
-      {batchMode ? (
-        <BatchUploadSlot
-          existingCount={slots.reduce((sum, st) => sum + countsByType[st], 0)}
-          onFilesSelected={handleBatchFiles}
-          uploading={batchUploading}
-        />
-      ) : (
-        <div className="flex flex-col gap-3">
-          {slots.map((st) => (
-            <UploadSlot
-              key={st}
-              sessionType={st}
-              existingCount={countsByType[st]}
-              date={dates[st]}
-              onDateChange={(v) => setDates((d) => ({ ...d, [st]: v }))}
-              onFilesSelected={(files) => handleFiles(st, files)}
-              uploading={uploadingSlot === st}
-            />
-          ))}
-        </div>
+      {batchMode && <BatchUploadSlot onFilesSelected={handleBatchFiles} uploading={batchUploading} />}
+
+      {/* 한 번에 업로드 모드에서는 실제로 사진이 들어오기 전까지 빈 시작일/종료일 섹션을
+          미리 보여줄 필요가 없다 - 업로드가 끝나 촬영일로 구분된 뒤에야 나타난다. */}
+      {(!batchMode || (photosQuery.data?.photos.length ?? 0) > 0) && (
+      <div className="flex flex-col gap-3">
+        {slots.map((st) => (
+          <UploadSlot
+            key={st}
+            sessionType={st}
+            photos={photosByType[st]}
+            date={dates[st]}
+            onDateChange={(v) => setDates((d) => ({ ...d, [st]: v }))}
+            onFilesSelected={(files) => handleFiles(st, files)}
+            uploading={uploadingSlot === st}
+            onDeletePhoto={handleDeletePhoto}
+            onOpenLightbox={setLightboxPhoto}
+            onMovePhoto={handleMovePhoto}
+          />
+        ))}
+      </div>
       )}
 
       <button
         type="button"
         disabled={!sessionId || !photosQuery.data?.photos.length}
         onClick={goNext}
-        className="mt-2 self-end rounded-lg bg-brand-700 px-5 py-2.5 font-medium text-white transition-colors hover:bg-brand-800 disabled:opacity-50"
+        className="mt-2 self-end rounded-xl bg-brand-700 px-5 py-2.5 font-medium text-white shadow-sm transition-colors hover:bg-brand-800 disabled:opacity-50"
       >
         다음: 분류/크롭 →
       </button>
+
+      {lightboxPhoto && (
+        <ImageLightbox
+          imageUrl={lightboxPhoto.thumbnail_url}
+          fileName={lightboxPhoto.original_filename}
+          onClose={() => setLightboxPhoto(null)}
+        />
+      )}
     </div>
   );
 }

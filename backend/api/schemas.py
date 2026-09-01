@@ -28,6 +28,7 @@ class SessionMetaResponse(BaseModel):
 class PhotoOut(BaseModel):
     photo_id: str
     session_type: str
+    original_filename: str
     compos_id: int
     compos_label: str
     classification_confidence: float
@@ -58,6 +59,7 @@ class ClassifyResponse(BaseModel):
 
 class PhotoPatchRequest(BaseModel):
     compos_id: int | None = None
+    session_type: str | None = Field(default=None, pattern="^(start|mid|end)$")
     rotation_deg: float | None = None
     crop_box: tuple[int, int, int, int] | None = None
     manually_confirmed: bool | None = None

@@ -1,42 +1,63 @@
-import { useEffect, useRef, useState } from "react";
-import type { SessionType } from "../api/types";
+import { useRef, useState } from "react";
+import type { PhotoOut, SessionType } from "../api/types";
 import { SESSION_TYPE_LABEL } from "../config/sessionTypes";
 
 interface UploadSlotProps {
   sessionType: SessionType;
-  existingCount: number;
+  photos: PhotoOut[];
   date: string;
   onDateChange: (v: string) => void;
   onFilesSelected: (files: File[]) => Promise<boolean> | void;
   uploading?: boolean;
+  onDeletePhoto?: (photoId: string) => void;
+  onOpenLightbox?: (photo: PhotoOut) => void;
+  /** 다른 섹션에서 드래그해온 사진을 이 세션타입으로 옮긴다 - 있으면 카드도 드래그 가능해진다 */
+  onMovePhoto?: (photoId: string, targetSessionType: SessionType) => void;
 }
 
 export function UploadSlot({
   sessionType,
-  existingCount,
+  photos,
   date,
   onDateChange,
   onFilesSelected,
   uploading,
+  onDeletePhoto,
+  onOpenLightbox,
+  onMovePhoto,
 }: UploadSlotProps) {
   const inputRef = useRef<HTMLInputElement>(null);
-  // "사진 선택"을 여러 번 눌러도 이전에 고른 사진들의 미리보기가 사라지지 않고 계속 쌓이도록
-  // 누적한다 (이전엔 매번 최신 선택으로 갈아치워서 마치 이전 선택이 사라진 것처럼 보였다).
-  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
-  const allCreatedUrlsRef = useRef<string[]>([]);
-
-  // 컴포넌트가 사라질 때만 지금까지 만든 objectURL을 전부 정리한다.
-  useEffect(() => {
-    return () => {
-      allCreatedUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
-    };
-  }, []);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const dragEnabled = !!onMovePhoto;
 
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-4">
+    <div
+      className={`rounded-2xl border bg-white p-4 shadow-sm transition-colors ${
+        isDragOver ? "border-brand-500 ring-2 ring-brand-300" : "border-neutral-200"
+      }`}
+      onDragOver={
+        dragEnabled
+          ? (e) => {
+              e.preventDefault();
+              setIsDragOver(true);
+            }
+          : undefined
+      }
+      onDragLeave={dragEnabled ? () => setIsDragOver(false) : undefined}
+      onDrop={
+        dragEnabled
+          ? (e) => {
+              e.preventDefault();
+              setIsDragOver(false);
+              const photoId = e.dataTransfer.getData("text/plain");
+              if (photoId) onMovePhoto!(photoId, sessionType);
+            }
+          : undefined
+      }
+    >
       <div className="mb-3 flex items-center justify-between">
         <h3 className="font-semibold text-neutral-800">{SESSION_TYPE_LABEL[sessionType]}</h3>
-        <span className="text-xs text-neutral-500">사진 {existingCount}장</span>
+        <span className="text-xs text-neutral-500">사진 {photos.length}장</span>
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-sm text-neutral-600">
@@ -57,14 +78,7 @@ export function UploadSlot({
           onChange={async (e) => {
             const files = Array.from(e.target.files ?? []);
             e.target.value = "";
-            if (files.length === 0) return;
-            // 업로드가 실제로 성공했을 때만 미리보기를 추가한다 - 실패했는데도 썸네일이
-            // 쌓이면 마치 사진이 저장된 것처럼 보여 사용자가 오류 메시지를 놓치게 된다.
-            const ok = await onFilesSelected(files);
-            if (ok === false) return;
-            const newUrls = files.map((f) => URL.createObjectURL(f));
-            allCreatedUrlsRef.current.push(...newUrls);
-            setPreviewUrls((prev) => [...prev, ...newUrls]);
+            if (files.length > 0) await onFilesSelected(files);
           }}
         />
         <button
@@ -72,24 +86,53 @@ export function UploadSlot({
           disabled={uploading}
           onClick={() => inputRef.current?.click()}
           className={
-            existingCount > 0
-              ? "rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 transition-opacity hover:bg-neutral-50 disabled:opacity-50"
-              : "rounded-lg bg-brand-700 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-brand-800 disabled:opacity-50"
+            photos.length > 0
+              ? "rounded-xl border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50 disabled:opacity-50"
+              : "rounded-xl bg-brand-700 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-brand-800 disabled:opacity-50"
           }
         >
-          {uploading ? "업로드 중..." : existingCount > 0 ? "추가 업로드" : "사진 업로드"}
+          {uploading ? "업로드 중..." : photos.length > 0 ? "추가 업로드" : "사진 업로드"}
         </button>
       </div>
 
-      {previewUrls.length > 0 && (
+      {photos.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1.5">
-          {previewUrls.map((url, i) => (
-            <img
-              key={i}
-              src={url}
-              alt=""
-              className="h-10 w-10 rounded border border-neutral-200 object-cover"
-            />
+          {photos.map((photo) => (
+            <div
+              key={photo.photo_id}
+              draggable={dragEnabled}
+              onDragStart={
+                dragEnabled
+                  ? (e) => {
+                      e.dataTransfer.setData("text/plain", photo.photo_id);
+                      e.dataTransfer.effectAllowed = "move";
+                    }
+                  : undefined
+              }
+              className={`group relative h-14 w-14 shrink-0 overflow-hidden rounded border border-neutral-200 ${
+                dragEnabled ? "cursor-grab active:cursor-grabbing" : ""
+              }`}
+            >
+              <img
+                src={photo.thumbnail_url}
+                alt={photo.original_filename}
+                onClick={onOpenLightbox ? () => onOpenLightbox(photo) : undefined}
+                className={`h-full w-full object-cover ${onOpenLightbox ? "cursor-pointer" : ""}`}
+              />
+              {onDeletePhoto && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeletePhoto(photo.photo_id);
+                  }}
+                  aria-label="사진 삭제"
+                  className="absolute top-0.5 right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/60 text-[10px] leading-none text-white opacity-0 transition-opacity group-hover:opacity-100"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
           ))}
         </div>
       )}

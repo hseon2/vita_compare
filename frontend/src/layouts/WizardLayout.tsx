@@ -27,7 +27,7 @@ export function WizardLayout() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 pb-16">
-      <header className="pt-6">
+      <header className="pt-8">
         <Link to="/" className="text-lg font-bold text-brand-800">
           Vita Compare
         </Link>

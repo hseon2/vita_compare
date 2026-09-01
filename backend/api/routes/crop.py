@@ -5,9 +5,11 @@ PATCH는 파일에 손대지 않고 crop_box/rotation_deg/compos_id 좌표만 �
 실제 픽셀 크롭은 services/generate_service.py가 PPT 생성 시점에만 수행한다.
 """
 from collections import Counter
+from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 
+import config
 from api.errors import AppError
 from api.routes.upload import photo_to_out
 from api.schemas import (
@@ -22,7 +24,7 @@ from models.schema import BodyCompRow
 from preprocessing.cropper import propose_crop_box
 from preprocessing.pose_detector import PoseNotDetectedError, detect_landmarks
 from state import session_store
-from state.session_store import SessionState
+from state.session_store import PhotoRecord, SessionState
 
 router = APIRouter(prefix="/api/sessions", tags=["crop"])
 
@@ -68,6 +70,26 @@ def patch_photo(session_id: str, photo_id: str, body: PhotoPatchRequest) -> Phot
             raise AppError("PHOTO_NOT_FOUND", f"사진을 찾을 수 없습니다: {photo_id}", 404)
 
         changed = False
+        if body.session_type is not None and body.session_type != record.session_type:
+            # 미리보기에서 시작일<->종료일 섹션으로 드래그해 옮긴 경우 - 실제 파일도 해당
+            # session_type 하위 폴더로 옮겨야 raw_path가 계속 유효하다.
+            old_raw = Path(record.raw_path)
+            new_raw_dir = config.SOURCE_DIR / s.patient.name / "raw" / body.session_type
+            new_raw_dir.mkdir(parents=True, exist_ok=True)
+            new_raw_path = new_raw_dir / old_raw.name
+            if old_raw.exists():
+                old_raw.rename(new_raw_path)
+            record.raw_path = str(new_raw_path)
+            if record.cropped_path:
+                old_cropped = Path(record.cropped_path)
+                if old_cropped.exists():
+                    new_cropped_dir = config.SOURCE_DIR / s.patient.name / "cropped" / body.session_type
+                    new_cropped_dir.mkdir(parents=True, exist_ok=True)
+                    new_cropped_path = new_cropped_dir / old_cropped.name
+                    old_cropped.rename(new_cropped_path)
+                    record.cropped_path = str(new_cropped_path)
+            record.session_type = body.session_type
+            changed = True
         if body.compos_id is not None:
             record.compos_id = body.compos_id
             record.classification_confidence = 1.0
@@ -117,6 +139,25 @@ def patch_photo(session_id: str, photo_id: str, body: PhotoPatchRequest) -> Phot
 
     state = session_store.update_session(session_id, mutator)
     return photo_to_out(photo_id, state.photos[photo_id])
+
+
+@router.delete("/{session_id}/photos/{photo_id}", status_code=204)
+def delete_photo(session_id: str, photo_id: str) -> Response:
+    """업로드 미리보기에서 잘못 올린 사진을 삭제한다. 원본/크롭 파일도 함께 지운다."""
+    removed: PhotoRecord | None = None
+
+    def mutator(s: SessionState) -> None:
+        nonlocal removed
+        removed = s.photos.pop(photo_id, None)
+        if removed is None:
+            raise AppError("PHOTO_NOT_FOUND", f"사진을 찾을 수 없습니다: {photo_id}", 404)
+
+    session_store.update_session(session_id, mutator)
+    if removed is not None:
+        for path_str in (removed.raw_path, removed.cropped_path):
+            if path_str:
+                Path(path_str).unlink(missing_ok=True)
+    return Response(status_code=204)
 
 
 @router.get("/{session_id}/body-comp", response_model=BodyCompGetResponse)

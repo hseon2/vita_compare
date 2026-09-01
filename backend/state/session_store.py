@@ -33,6 +33,7 @@ class PhotoRecord:
     photo_id: str
     session_type: SessionType
     compos_id: int = 0                                    # 0 = 미분류
+    original_filename: str = ""                            # 업로드 당시 원본 파일명 (미리보기 표시용)
     raw_path: str = ""
     rotation_deg: float = 0.0
     crop_box: tuple[int, int, int, int] = (0, 0, 0, 0)     # (0,0,0,0) = 아직 AI 크롭 전

@@ -1,15 +1,16 @@
 @import "tailwindcss";
 
-/* 한의원 로고(보라 계열 꽃잎)에서 뽑은 브랜드 팔레트 - 진보라(brand-800)에서 연라벤더(brand-50)까지 */
+/* 한의원 로고(보라 계열 꽃잎)에서 뽑은 브랜드 팔레트 - 진보라(brand-800)에서 연라벤더(brand-50)까지.
+   인터랙션 색상(400~700)은 좀 더 선명한 비비드 바이올렛으로 채도를 올렸다. */
 @theme {
   --color-brand-50: #f8f5fc;
   --color-brand-100: #efe6f8;
   --color-brand-200: #ded0ef;
-  --color-brand-300: #c7ade1;
-  --color-brand-400: #ab84cf;
-  --color-brand-500: #8f63b9;
-  --color-brand-600: #764aa0;
-  --color-brand-700: #5f3b84;
+  --color-brand-300: #c4a9e6;
+  --color-brand-400: #a684e0;
+  --color-brand-500: #8b5cf6;
+  --color-brand-600: #7c3aed;
+  --color-brand-700: #6d28d9;
   --color-brand-800: #4c2e77;
   --color-brand-900: #362058;
 }
@@ -28,5 +29,5 @@ body {
 }
 
 .ReactCrop {
-  --rc-focus-color: #8f63b9;
+  --rc-focus-color: #8b5cf6;
 }

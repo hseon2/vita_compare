@@ -86,6 +86,9 @@ export const api = {
       body: JSON.stringify(patch),
     }),
 
+  deletePhoto: (sessionId: string, photoId: string) =>
+    apiFetch<void>(`/api/sessions/${sessionId}/photos/${photoId}`, { method: "DELETE" }),
+
   getBodyComp: (sessionId: string) =>
     apiFetch<BodyCompGetResponse>(`/api/sessions/${sessionId}/body-comp`),
 

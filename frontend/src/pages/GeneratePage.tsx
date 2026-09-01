@@ -33,7 +33,7 @@ export function GeneratePage() {
       <div className="flex flex-col items-center gap-4 py-16 text-center">
         <p className="text-lg font-semibold text-neutral-900">다운로드가 시작되었습니다</p>
         <p className="text-sm text-neutral-500">다운로드 후에는 이 세션을 재사용할 수 없습니다.</p>
-        <a href="/" className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-800">
+        <a href="/" className="rounded-xl bg-brand-700 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-brand-800">
           새 작업 시작
         </a>
       </div>
@@ -47,7 +47,7 @@ export function GeneratePage() {
           type="button"
           onClick={handleStart}
           disabled={startGenerate.isPending}
-          className="rounded-lg bg-brand-700 px-6 py-3 text-base font-medium text-white transition-colors hover:bg-brand-800 disabled:opacity-50"
+          className="rounded-xl bg-brand-700 px-6 py-3 text-base font-medium text-white shadow-sm transition-colors hover:bg-brand-800 disabled:opacity-50"
         >
           {startGenerate.isPending ? "요청 중..." : "PPT 생성"}
         </button>
@@ -75,7 +75,7 @@ export function GeneratePage() {
           <a
             href={api.downloadUrl(sessionId!)}
             onClick={handleDownloadClick}
-            className="rounded-lg bg-brand-700 px-6 py-3 text-base font-medium text-white transition-colors hover:bg-brand-800"
+            className="rounded-xl bg-brand-700 px-6 py-3 text-base font-medium text-white shadow-sm transition-colors hover:bg-brand-800"
           >
             PPT 다운로드
           </a>
@@ -88,7 +88,7 @@ export function GeneratePage() {
           <button
             type="button"
             onClick={handleStart}
-            className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700"
+            className="rounded-xl border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700"
           >
             다시 시도
           </button>

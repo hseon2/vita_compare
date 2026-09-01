@@ -15,7 +15,7 @@ export function PhotoThumbnail({ photo, onClick, selected }: PhotoThumbnailProps
     <div
       role={onClick ? "button" : undefined}
       onClick={onClick}
-      className={`flex flex-col gap-1.5 rounded-lg border bg-white p-2 ${
+      className={`flex flex-col gap-1.5 rounded-xl border bg-white p-2 ${
         selected ? "border-brand-700 ring-2 ring-brand-600" : "border-neutral-200"
       } ${onClick ? "cursor-pointer" : ""}`}
     >

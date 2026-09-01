@@ -15,7 +15,7 @@ export function BodyCompForm({ mode, rows, onRowsChange }: BodyCompFormProps) {
   const showMid = mode === "long";
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-neutral-200 bg-white">
+    <div className="overflow-x-auto rounded-2xl border border-neutral-200 bg-white shadow-sm">
       <table className="w-full min-w-[720px] text-sm">
         <thead>
           <tr className="border-b border-neutral-200 bg-sky-50 text-neutral-600">
@@ -103,7 +103,7 @@ export function BodyCompForm({ mode, rows, onRowsChange }: BodyCompFormProps) {
               { label: "", start: "", mid: showMid ? "" : null, end: "", target: "", highlight: false },
             ])
           }
-          className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50"
+          className="rounded-xl border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50"
         >
           + 항목 추가
         </button>

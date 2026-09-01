@@ -192,6 +192,15 @@ export function OptionSelectPage() {
           </div>
         </div>
 
+        {/* duplicateConflict일 땐 "다음"이 조용히 비활성화되기만 해서 왜 안 넘어가는지 알 수
+            없었다(실사용 중 발견된 버그) - 눈에 보이는 경고를 반드시 같이 보여준다. */}
+        {duplicateConflict && (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            이미 다른 사진이 이 구도로 확정돼 있어서 다음으로 넘어갈 수 없어요. 구도를 다시
+            선택해주세요.
+          </p>
+        )}
+
         {/* "다음 사진" 이동과 "다음 단계로" 이동을 서로 다른 버튼으로 확실히 구분한다 - 하나의
             버튼이 위치에 따라 라벨만 바뀌면 뭐가 눌리는지 헷갈린다는 피드백 반영. */}
         <div className="flex items-center justify-between gap-2">

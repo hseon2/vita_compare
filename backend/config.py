@@ -25,7 +25,12 @@ POSE_MODEL_PATH = PROJECT_ROOT / "backend" / "ml_assets" / "pose_landmarker_full
 
 # ---- 분류/전처리 임계값 ----
 CONFIDENCE_THRESHOLD = 0.7  # 이 미만이면 검수 UI에서 "확인 필요" 배지
-POSE_MIN_DETECTION_CONFIDENCE = 0.5
+# 체간/하반신처럼 신체 일부만 잘라 찍은 사진은 MediaPipe의 1차 인물 감지 단계가 기본값(0.5)
+# 에서는 "사람 없음"으로 반려해 포즈 검출 자체가 실패했다(실사용 중 발견 - 실제 상반신/하반신
+# 잘린 사진으로 재현: 0.5에서 landmark 0개, 0.2에서 정상 검출). 인물이 있다고 판단하는
+# 임계값일 뿐 개별 랜드마크 신뢰도(LANDMARK_VISIBILITY_THRESHOLD)와는 별개라 낮춰도 분류
+# 정확도에는 영향이 없다.
+POSE_MIN_DETECTION_CONFIDENCE = 0.2
 LANDMARK_VISIBILITY_THRESHOLD = 0.5
 # 정면/후면 판별용 코-귀 상대 깊이(z) 정규화 스케일. 실사진 실측 기준(정면 약 -0.64, 후면 약
 # 0.98)으로 잡은 값 - 이 값 이상으로 뚜렷하게 갈리면 confidence가 1.0에 가까워진다.

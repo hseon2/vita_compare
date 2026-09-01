@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { api, ApiError } from "../api/client";
 import { useGenerateStatus, useStartGenerate } from "../hooks/useGenerate";
 import { clearLastSessionId } from "../utils/sessionCache";
@@ -9,7 +9,6 @@ export function GeneratePage() {
   const statusQuery = useGenerateStatus(sessionId);
   const startGenerate = useStartGenerate(sessionId!);
   const [startError, setStartError] = useState<string | null>(null);
-  const [downloaded, setDownloaded] = useState(false);
 
   async function handleStart() {
     setStartError(null);
@@ -33,25 +32,13 @@ export function GeneratePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusQuery.data]);
 
-  function handleDownloadClick() {
-    // 다운로드는 <a href> 네이티브 이동으로 처리한다 (백엔드가 스트리밍 후 세션을 서버에서 삭제함)
+  // 홈("새 작업 시작")으로 돌아갈 때만 이어하기 단축키를 지운다 - 다운로드 자체는 몇 번이든
+  // 다시 눌러도 되고(브라우저 메모리의 Blob이 그대로 남아있음), 이 화면을 떠나야만 초기화된다.
+  function handleGoHome() {
     clearLastSessionId(sessionId);
-    setDownloaded(true);
   }
 
   const status = statusQuery.data;
-
-  if (downloaded) {
-    return (
-      <div className="flex flex-col items-center gap-4 py-16 text-center">
-        <p className="text-lg font-semibold text-neutral-900">다운로드가 시작되었습니다</p>
-        <p className="text-sm text-neutral-500">다운로드 후에는 이 세션을 재사용할 수 없습니다.</p>
-        <a href="/" className="rounded-xl bg-brand-700 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-brand-800">
-          새 작업 시작
-        </a>
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-col items-center gap-6 py-16">
@@ -80,11 +67,19 @@ export function GeneratePage() {
           <p className="text-sm text-neutral-600">생성 완료: {status.result_path}</p>
           <a
             href={api.downloadUrl(sessionId!)}
-            onClick={handleDownloadClick}
+            download={status.result_path ?? "presentation.pptx"}
             className="rounded-xl bg-brand-700 px-6 py-3 text-base font-medium text-white shadow-sm transition-colors hover:bg-brand-800"
           >
             PPT 다운로드
           </a>
+          <div className="flex items-center gap-3">
+            <Link to={`/s/${sessionId}/match`} className="text-sm text-neutral-500 underline">
+              ← 이전으로 돌아가기
+            </Link>
+            <a href="/" onClick={handleGoHome} className="text-sm text-neutral-500 underline">
+              새 작업 시작
+            </a>
+          </div>
         </div>
       )}
 

@@ -93,13 +93,22 @@ export function MatchConfirmPage() {
         <BodyCompForm mode={mode} rows={rows} onRowsChange={handleRowsChange} />
       </section>
 
-      <button
-        type="button"
-        onClick={() => navigate(`/s/${sessionId}/generate`)}
-        className="self-end rounded-xl bg-brand-700 px-5 py-2.5 font-medium text-white shadow-sm transition-colors hover:bg-brand-800"
-      >
-        다음: 생성 →
-      </button>
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => navigate(`/s/${sessionId}/crop`)}
+          className="rounded-xl border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
+        >
+          ← 이전 (크롭)
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate(`/s/${sessionId}/generate`)}
+          className="rounded-xl bg-brand-700 px-5 py-2.5 font-medium text-white shadow-sm transition-colors hover:bg-brand-800"
+        >
+          다음: 생성 →
+        </button>
+      </div>
     </div>
   );
 }

@@ -1,7 +1,18 @@
+// backend/api/routes/*.py 전체를 포팅. 함수 시그니처/반환 shape은 기존과 동일하게 유지해서
+// frontend/src/hooks/*.ts와 페이지 컴포넌트를 그대로 재사용한다 - fetch() 대신
+// frontend/src/lib/db.ts(IndexedDB)와 lib/pose.ts, lib/classifier.ts, lib/cropper.ts,
+// lib/pptGenerator.ts(브라우저 내 연산)를 호출할 뿐, 사진이 어떤 서버로도 전송되지 않는다.
+import * as db from "../lib/db";
+import { classify } from "../lib/classifier";
+import { computeRotationAngle } from "../lib/leveler";
+import { detectLandmarks, loadImageFromBlob, PoseNotDetectedError } from "../lib/pose";
+import { proposeCropBox } from "../lib/cropper";
+import { generatePresentation } from "../lib/pptGenerator";
+import { CONFIDENCE_THRESHOLD } from "../lib/preprocessConfig";
 import type {
-  BodyCompGetResponse,
   BodyCompRowIn,
   ClassifyResponse,
+  ClassifyWarning,
   GenerateStatusOut,
   Mode,
   PhotoOut,
@@ -13,101 +24,147 @@ import type {
   SessionType,
 } from "./types";
 
-// 빈 문자열이면 Vite 프록시(/api, /static → localhost:8000)를 그대로 사용.
-// 프록시 없이 배포할 상황이 생기면 이 값만 바꾸면 됨.
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
+export { ApiError } from "../lib/db";
 
-export class ApiError extends Error {
-  error_code: string;
-  status: number;
-
-  constructor(error_code: string, message: string, status: number) {
-    super(message);
-    this.error_code = error_code;
-    this.status = status;
-  }
+interface GenerateEntry {
+  status: GenerateStatusOut;
+  blob: Blob | null;
+  objectUrl: string | null;
 }
 
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, init);
-  if (!res.ok) {
-    const body = await res
-      .json()
-      .catch(() => ({ error_code: "UNKNOWN", message: res.statusText }));
-    throw new ApiError(body.error_code ?? "UNKNOWN", body.message ?? res.statusText, res.status);
+const generateEntries = new Map<string, GenerateEntry>();
+
+function getGenerateEntry(sessionId: string): GenerateEntry {
+  let entry = generateEntries.get(sessionId);
+  if (!entry) {
+    entry = { status: { state: "idle", progress: 0, message: "", result_path: null }, blob: null, objectUrl: null };
+    generateEntries.set(sessionId, entry);
   }
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  return entry;
 }
 
-const jsonHeaders = { "Content-Type": "application/json" };
+/** 업로드 직후엔 미분류 상태인 사진을 순회하며 포즈검출 -> 구도분류 -> 수평조정 -> 1차크롭까지
+ * 한 번에 채운다 (backend classify.py 포팅). 이미 사람이 확정한(option_confirmed) 사진은
+ * 건너뛴다 - 사진을 추가로 올린 뒤 재호출해도 기존 확정값을 덮어쓰지 않는다. */
+async function classifySession(sessionId: string): Promise<ClassifyResponse> {
+  const records = await db.getPhotosRaw(sessionId);
+  const warnings: ClassifyWarning[] = [];
+
+  for (const record of records) {
+    if (record.option_confirmed) continue;
+
+    try {
+      const landmarks = await detectLandmarks(record.blob);
+      record.pose_error = false;
+
+      const [composId, confidence] = classify(landmarks);
+      record.compos_id = composId;
+      record.classification_confidence = confidence;
+      record.manually_confirmed = false;
+
+      const img = await loadImageFromBlob(record.blob);
+      record.rotation_deg = computeRotationAngle(landmarks, img.naturalWidth, img.naturalHeight);
+      record.crop_box = proposeCropBox(img, landmarks, record.rotation_deg, composId);
+
+      if (confidence < CONFIDENCE_THRESHOLD) {
+        warnings.push({
+          photo_id: record.photo_id,
+          error_code: "LOW_CONFIDENCE",
+          message: `분류 신뢰도가 낮습니다 (${confidence.toFixed(2)}) - 확인이 필요합니다.`,
+        });
+      }
+    } catch (e) {
+      if (e instanceof PoseNotDetectedError) {
+        record.pose_error = true;
+        record.compos_id = 0;
+        record.classification_confidence = 0;
+        warnings.push({
+          photo_id: record.photo_id,
+          error_code: "POSE_NOT_DETECTED",
+          message: `인물을 검출하지 못했습니다: ${record.original_filename}`,
+        });
+      } else {
+        throw e;
+      }
+    }
+
+    await db.putPhotoRaw(record);
+  }
+
+  const grouped = await db.getPhotos(sessionId);
+  return { photos: grouped.photos, warnings };
+}
+
+/** PPT 생성을 비동기로 시작하고 진행상태를 generateEntries에 반영한다 (backend
+ * run_generate_job의 클라이언트 버전 - BackgroundTasks 대신 그냥 fire-and-forget). */
+async function runGenerateJob(sessionId: string): Promise<void> {
+  const entry = getGenerateEntry(sessionId);
+  try {
+    const [meta, photos, bodyComp] = await Promise.all([
+      db.getSessionMeta(sessionId),
+      db.getPhotosRaw(sessionId),
+      db.getBodyComp(sessionId),
+    ]);
+
+    const blob = await generatePresentation(meta.mode, photos, meta.session_dates, bodyComp.rows, (p) => {
+      entry.status = { ...entry.status, progress: p.progress, message: p.message };
+    });
+
+    if (entry.objectUrl) URL.revokeObjectURL(entry.objectUrl);
+    entry.blob = blob;
+    entry.objectUrl = URL.createObjectURL(blob);
+
+    const today = new Date();
+    const dateStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}${String(today.getDate()).padStart(2, "0")}`;
+    const fileName = `${meta.patient_name}님_프레젠테이션_${dateStr}.pptx`;
+
+    entry.status = { state: "done", progress: 1.0, message: "완료", result_path: fileName };
+  } catch (e) {
+    entry.status = { state: "error", progress: entry.status.progress, message: e instanceof Error ? e.message : String(e), result_path: null };
+  }
+}
 
 export const api = {
-  createSession: (patientName: string, mode: Mode) =>
-    apiFetch<SessionCreateResponse>("/api/sessions", {
-      method: "POST",
-      headers: jsonHeaders,
-      body: JSON.stringify({ patient_name: patientName, mode }),
-    }),
+  createSession: (patientName: string, mode: Mode): Promise<SessionCreateResponse> => db.createSession(patientName, mode),
 
-  getSessionMeta: (sessionId: string) =>
-    apiFetch<SessionMetaResponse>(`/api/sessions/${sessionId}`),
+  getSessionMeta: (sessionId: string): Promise<SessionMetaResponse> => db.getSessionMeta(sessionId),
 
-  patchSessionMeta: (sessionId: string, patch: SessionPatchRequest) =>
-    apiFetch<SessionMetaResponse>(`/api/sessions/${sessionId}`, {
-      method: "PATCH",
-      headers: jsonHeaders,
-      body: JSON.stringify(patch),
-    }),
+  patchSessionMeta: (sessionId: string, patch: SessionPatchRequest): Promise<SessionMetaResponse> =>
+    db.patchSessionMeta(sessionId, patch),
 
-  uploadPhotos: (
-    sessionId: string,
-    sessionType: SessionType,
-    sessionDate: string | null,
-    files: File[],
-  ) => {
-    const fd = new FormData();
-    fd.append("session_type", sessionType);
-    if (sessionDate) fd.append("session_date", sessionDate);
-    files.forEach((f) => fd.append("files", f));
-    // Content-Type을 직접 지정하지 않는다 - 브라우저가 multipart boundary를 자동으로 채워줌
-    return apiFetch<PhotoOut[]>(`/api/sessions/${sessionId}/photos`, {
-      method: "POST",
-      body: fd,
-    });
+  uploadPhotos: (sessionId: string, sessionType: SessionType, sessionDate: string | null, files: File[]): Promise<PhotoOut[]> =>
+    db.uploadPhotos(sessionId, sessionType, sessionDate, files),
+
+  getPhotos: (sessionId: string): Promise<PhotosGroupedResponse> => db.getPhotos(sessionId),
+
+  classifySession: (sessionId: string): Promise<ClassifyResponse> => classifySession(sessionId),
+
+  patchPhoto: async (sessionId: string, photoId: string, patch: PhotoPatchRequest): Promise<PhotoOut> => {
+    const record = await db.patchPhoto(sessionId, photoId, patch);
+    const all = await db.getPhotosRaw(sessionId);
+    const dup = db.duplicatePhotoIds(all);
+    return db.photoToOut(record, dup.has(record.photo_id));
   },
 
-  getPhotos: (sessionId: string) =>
-    apiFetch<PhotosGroupedResponse>(`/api/sessions/${sessionId}/photos`),
+  deletePhoto: (_sessionId: string, photoId: string): Promise<void> => db.deletePhoto(photoId),
 
-  classifySession: (sessionId: string) =>
-    apiFetch<ClassifyResponse>(`/api/sessions/${sessionId}/classify`, { method: "POST" }),
+  getBodyComp: (sessionId: string): Promise<{ rows: BodyCompRowIn[] }> => db.getBodyComp(sessionId),
 
-  patchPhoto: (sessionId: string, photoId: string, patch: PhotoPatchRequest) =>
-    apiFetch<PhotoOut>(`/api/sessions/${sessionId}/photos/${photoId}`, {
-      method: "PATCH",
-      headers: jsonHeaders,
-      body: JSON.stringify(patch),
-    }),
+  saveBodyComp: async (sessionId: string, rows: BodyCompRowIn[]): Promise<{ ok: true }> => {
+    await db.saveBodyComp(sessionId, rows);
+    return { ok: true };
+  },
 
-  deletePhoto: (sessionId: string, photoId: string) =>
-    apiFetch<void>(`/api/sessions/${sessionId}/photos/${photoId}`, { method: "DELETE" }),
+  startGenerate: (sessionId: string): Promise<{ ok: true }> => {
+    const entry = getGenerateEntry(sessionId);
+    if (entry.status.state !== "running") {
+      entry.status = { state: "running", progress: 0.05, message: "사진 정리 중", result_path: null };
+      void runGenerateJob(sessionId);
+    }
+    return Promise.resolve({ ok: true });
+  },
 
-  getBodyComp: (sessionId: string) =>
-    apiFetch<BodyCompGetResponse>(`/api/sessions/${sessionId}/body-comp`),
+  getGenerateStatus: (sessionId: string): Promise<GenerateStatusOut> => Promise.resolve(getGenerateEntry(sessionId).status),
 
-  saveBodyComp: (sessionId: string, rows: BodyCompRowIn[]) =>
-    apiFetch<{ ok: true }>(`/api/sessions/${sessionId}/body-comp`, {
-      method: "POST",
-      headers: jsonHeaders,
-      body: JSON.stringify({ rows }),
-    }),
-
-  startGenerate: (sessionId: string) =>
-    apiFetch<{ ok: true }>(`/api/sessions/${sessionId}/generate`, { method: "POST" }),
-
-  getGenerateStatus: (sessionId: string) =>
-    apiFetch<GenerateStatusOut>(`/api/sessions/${sessionId}/generate/status`),
-
-  downloadUrl: (sessionId: string) => `${API_BASE}/api/sessions/${sessionId}/download`,
+  downloadUrl: (sessionId: string): string => getGenerateEntry(sessionId).objectUrl ?? "",
 };

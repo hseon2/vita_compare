@@ -192,6 +192,8 @@ export function OptionSelectPage() {
           </div>
         </div>
 
+        {/* "다음 사진" 이동과 "다음 단계로" 이동을 서로 다른 버튼으로 확실히 구분한다 - 하나의
+            버튼이 위치에 따라 라벨만 바뀌면 뭐가 눌리는지 헷갈린다는 피드백 반영. */}
         <div className="flex items-center justify-between gap-2">
           <button
             type="button"
@@ -199,17 +201,30 @@ export function OptionSelectPage() {
             disabled={viewIndex === 0}
             className="rounded-xl border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-40"
           >
-            ← 이전
+            ← 이전 사진
           </button>
+          {!isLastPhoto && (
+            <button
+              type="button"
+              onClick={handleNext}
+              disabled={!canAdvance || patchPhoto.isPending}
+              className="rounded-xl bg-brand-700 px-5 py-2.5 font-medium text-white shadow-sm transition-colors hover:bg-brand-800 disabled:opacity-50"
+            >
+              {patchPhoto.isPending ? "저장 중..." : "다음 사진 →"}
+            </button>
+          )}
+        </div>
+
+        {isLastPhoto && (
           <button
             type="button"
             onClick={handleNext}
             disabled={!canAdvance || patchPhoto.isPending}
-            className="rounded-xl bg-brand-700 px-5 py-2.5 font-medium text-white shadow-sm transition-colors hover:bg-brand-800 disabled:opacity-50"
+            className="flex items-center justify-center gap-2 rounded-xl border-2 border-emerald-600 bg-emerald-600 px-5 py-3 font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:opacity-50"
           >
-            {patchPhoto.isPending ? "저장 중..." : isLastPhoto ? "다음: 크롭 →" : "다음 →"}
+            {patchPhoto.isPending ? "저장 중..." : "✓ 마지막 사진 확인 완료 - 크롭 단계로 이동"}
           </button>
-        </div>
+        )}
       </div>
 
       <aside className="flex w-full flex-col gap-4 rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm lg:sticky lg:top-4 lg:w-96 lg:shrink-0">

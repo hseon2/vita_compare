@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AngleSlider } from "../components/AngleSlider";
 import { CropCanvas } from "../components/CropCanvas";
-import { COMPOS } from "../config/compos";
+import { PptSlidePreview } from "../components/PptSlidePreview";
+import { COMPOS, WIDE_COMPOS } from "../config/compos";
 import { getGuideImageUrl, sideForSessionType } from "../config/guideImages";
 import { SESSION_TYPE_LABEL } from "../config/sessionTypes";
 import { usePatchPhoto } from "../hooks/usePatchPhoto";
@@ -58,6 +59,16 @@ export function CropAdjustPage() {
     }
     return units;
   }, [allPhotos, mode]);
+
+  const [previewOpen, setPreviewOpen] = useState(false);
+  useEffect(() => {
+    if (!previewOpen) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setPreviewOpen(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [previewOpen]);
 
   const [unitIndex, setUnitIndex] = useState<number | null>(null);
   useEffect(() => {
@@ -164,9 +175,14 @@ export function CropAdjustPage() {
             {COMPOS.find(([id]) => id === currentUnit.composId)?.[1]})
           </span>
         </p>
-        <button type="button" onClick={toggleGuideOverlay} className="text-xs text-neutral-500 underline">
-          가이드 오버레이 {guideOverlayVisible ? "숨기기" : "보이기"}
-        </button>
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={() => setPreviewOpen(true)} className="text-xs text-neutral-500 underline">
+            PPT 미리보기
+          </button>
+          <button type="button" onClick={toggleGuideOverlay} className="text-xs text-neutral-500 underline">
+            가이드 오버레이 {guideOverlayVisible ? "숨기기" : "보이기"}
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-1.5 rounded-xl bg-neutral-50 p-1.5">
@@ -242,6 +258,8 @@ export function CropAdjustPage() {
         })}
       </div>
 
+      {/* "다음 쌍" 이동과 "다음 단계로" 이동을 서로 다른 버튼으로 확실히 구분한다 - 하나의
+          버튼이 위치에 따라 라벨만 바뀌면 뭐가 눌리는지 헷갈린다는 피드백 반영. */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <button
           type="button"
@@ -249,17 +267,58 @@ export function CropAdjustPage() {
           disabled={unitIndex === 0}
           className="rounded-xl border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-40"
         >
-          ← 이전
+          ← 이전 쌍
         </button>
+        {!isLastUnit && (
+          <button
+            type="button"
+            onClick={saveCurrentUnit}
+            disabled={patchPhoto.isPending}
+            className="rounded-xl bg-brand-700 px-5 py-2.5 font-medium text-white shadow-sm transition-colors hover:bg-brand-800 disabled:opacity-50"
+          >
+            {patchPhoto.isPending ? "저장 중..." : "다음 쌍 →"}
+          </button>
+        )}
+      </div>
+
+      {isLastUnit && (
         <button
           type="button"
           onClick={saveCurrentUnit}
           disabled={patchPhoto.isPending}
-          className="rounded-xl bg-brand-700 px-5 py-2.5 font-medium text-white shadow-sm transition-colors hover:bg-brand-800 disabled:opacity-50"
+          className="flex items-center justify-center gap-2 rounded-xl border-2 border-emerald-600 bg-emerald-600 px-5 py-3 font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:opacity-50"
         >
-          {patchPhoto.isPending ? "저장 중..." : isLastUnit ? "다음: 매칭 확인 →" : "다음 →"}
+          {patchPhoto.isPending ? "저장 중..." : "✓ 마지막 쌍 확인 완료 - 매칭 확인 단계로 이동"}
         </button>
-      </div>
+      )}
+
+      {previewOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
+          onClick={() => setPreviewOpen(false)}
+        >
+          <div className="flex max-h-full w-full max-w-3xl flex-col gap-2" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between rounded-xl bg-white px-3 py-2 text-sm text-neutral-700 shadow">
+              <span>PPT 미리보기 - 지금 편집 중인 회전/크롭이 실제 슬라이드에 이렇게 들어갑니다.</span>
+              <button
+                type="button"
+                onClick={() => setPreviewOpen(false)}
+                className="shrink-0 rounded border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-50"
+              >
+                닫기
+              </button>
+            </div>
+            <PptSlidePreview
+              composId={currentUnit.composId}
+              beforePhoto={currentUnit.beforePhoto}
+              afterPhoto={currentUnit.afterPhoto}
+              beforeEdit={currentUnit.beforePhoto ? (edits[currentUnit.beforePhoto.photo_id] ?? null) : null}
+              afterEdit={currentUnit.afterPhoto ? (edits[currentUnit.afterPhoto.photo_id] ?? null) : null}
+              wide={WIDE_COMPOS.has(currentUnit.composId)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

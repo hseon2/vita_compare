@@ -3,7 +3,7 @@ import ReactCrop, { type PixelCrop } from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
 import type { CropBox, PhotoOut } from "../api/types";
 import { getCropHint } from "../config/cropHints";
-import { displayedToNaturalBox, naturalBoxToDisplayed } from "../utils/cropCoords";
+import { clampBoxToBounds, displayedToNaturalBox, naturalBoxToDisplayed } from "../utils/cropCoords";
 import { getRotatedCanvasSize, renderRotatedImage } from "../utils/imageRotation";
 
 interface CropCanvasProps {
@@ -47,6 +47,7 @@ export function CropCanvas({
   const [rotatedDataUrl, setRotatedDataUrl] = useState<string | null>(null);
   const [rotatedSize, setRotatedSize] = useState<{ width: number; height: number } | null>(null);
   const [displayCrop, setDisplayCrop] = useState<PixelCrop | null>(null);
+  const [zoom, setZoom] = useState(1);
 
   // 원본(회전 전) 이미지를 한 번 로드. onload가 비동기라 최신 회전각은 ref로 읽는다.
   useEffect(() => {
@@ -55,6 +56,7 @@ export function CropCanvas({
     img.onload = () => {
       rawImgRef.current = img;
       prevRotatedSizeRef.current = null;
+      setZoom(1);
       rerender(rotationDegRef.current);
     };
     img.src = photo.thumbnail_url;
@@ -111,12 +113,20 @@ export function CropCanvas({
   }
 
   // cropBox(natural) -> displayCrop(표시 px) 동기화
+  // 크롭박스는 항상 사진 범위 안으로 잘라낸 뒤에만 화면에 반영한다 - 전/후 크기 동기화나
+  // 회전 재스케일 과정에서 박스가 경계 밖으로 밀려나는 걸 막는다(실사용 피드백). 보정이
+  // 실제로 일어났으면 부모 상태도 고쳐서 다음 저장 때 잘못된 값이 남지 않게 한다.
   useEffect(() => {
     if (!rotatedSize || !containerWidth) return;
-    const displayedWidth = Math.min(containerWidth, rotatedSize.width);
-    setDisplayCrop(naturalBoxToDisplayed(cropBox, displayedWidth, rotatedSize.width));
+    const clamped = clampBoxToBounds(cropBox, rotatedSize.width, rotatedSize.height);
+    if (clamped.some((v, i) => v !== cropBox[i])) {
+      onBoxChange(clamped);
+      return;
+    }
+    const displayedWidth = Math.min(containerWidth, rotatedSize.width) * zoom;
+    setDisplayCrop(naturalBoxToDisplayed(clamped, displayedWidth, rotatedSize.width));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cropBox, rotatedSize, containerWidth]);
+  }, [cropBox, rotatedSize, containerWidth, zoom]);
 
   return (
     <div ref={containerRef} className="flex w-full flex-col gap-2">
@@ -129,6 +139,8 @@ export function CropCanvas({
           rotatedSize={rotatedSize}
           displayCrop={displayCrop}
           containerWidth={containerWidth}
+          zoom={zoom}
+          setZoom={setZoom}
           guideOverlayVisible={guideOverlayVisible}
           setDisplayCrop={setDisplayCrop}
           onBoxChange={onBoxChange}
@@ -145,11 +157,16 @@ interface CropCanvasInnerProps {
   rotatedSize: { width: number; height: number };
   displayCrop: PixelCrop;
   containerWidth: number;
+  zoom: number;
+  setZoom: (updater: (z: number) => number) => void;
   guideOverlayVisible: boolean;
   setDisplayCrop: (c: PixelCrop) => void;
   onBoxChange: (box: CropBox) => void;
   onUserResize?: (box: CropBox) => void;
 }
+
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 3;
 
 function CropCanvasInner({
   photo,
@@ -157,48 +174,91 @@ function CropCanvasInner({
   rotatedSize,
   displayCrop,
   containerWidth,
+  zoom,
+  setZoom,
   guideOverlayVisible,
   setDisplayCrop,
   onBoxChange,
   onUserResize,
 }: CropCanvasInnerProps) {
-  const displayedWidth = Math.min(containerWidth, rotatedSize.width);
+  // 확대 안 한 기본 크기(=스크롤 뷰포트 크기) - 확대하면 실제 이미지(displayedWidth/Height)는
+  // 이보다 커지고, 뷰포트는 그대로라 overflow-auto로 스크롤/드래그해서 이동한다.
+  const baseWidth = Math.min(containerWidth, rotatedSize.width);
+  const baseHeight = rotatedSize.height * (baseWidth / rotatedSize.width);
+  const displayedWidth = baseWidth * zoom;
   const displayedHeight = rotatedSize.height * (displayedWidth / rotatedSize.width);
   const guideLineY = displayCrop.y + displayCrop.height / 2;
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="relative" style={{ width: displayedWidth, maxWidth: "100%" }}>
-        <ReactCrop
-          crop={displayCrop}
-          onChange={(c) => setDisplayCrop(c)}
-          onComplete={(c) => {
-            const box = displayedToNaturalBox(c, displayedWidth, rotatedSize.width);
-            onBoxChange(box);
-            onUserResize?.(box);
-          }}
+      {/* 초기화 버튼을 flex 흐름 밖(absolute)에 둬서 나타났다 사라져도 −/％/+ 그룹의
+          중앙 정렬(특히 퍼센트 숫자가 실제 가운데 오는 것)에 영향을 주지 않게 한다. */}
+      <div className="relative flex items-center justify-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => setZoom((z) => Math.max(MIN_ZOOM, +(z - 0.25).toFixed(2)))}
+          disabled={zoom <= MIN_ZOOM}
+          className="flex h-6 w-6 items-center justify-center rounded border border-neutral-300 text-sm leading-none text-neutral-600 disabled:opacity-30"
+          aria-label="축소"
         >
-          <img
-            src={rotatedDataUrl}
-            alt="회전된 원본"
-            style={{ width: displayedWidth, height: displayedHeight, display: "block" }}
-          />
-        </ReactCrop>
-
-        {/* 보조선(수평 기준선) - 항상 노출, 현재 크롭박스 세로 중앙에 표시 */}
-        <div
-          className="pointer-events-none absolute right-0 left-0 border-t-2 border-dashed border-sky-400"
-          style={{ top: guideLineY }}
-        />
-
-        {/* 투명 가이드 오버레이 - 토글 가능, 16개 구도 공용 임시 자리표시자 */}
-        {guideOverlayVisible && (
-          <img
-            src="/guides/generic-guide.png"
-            alt=""
-            className="pointer-events-none absolute inset-0 h-full w-full opacity-40 mix-blend-multiply"
-          />
+          −
+        </button>
+        <span className="w-10 text-center text-[11px] text-neutral-500">{Math.round(zoom * 100)}%</span>
+        <button
+          type="button"
+          onClick={() => setZoom((z) => Math.min(MAX_ZOOM, +(z + 0.25).toFixed(2)))}
+          disabled={zoom >= MAX_ZOOM}
+          className="flex h-6 w-6 items-center justify-center rounded border border-neutral-300 text-sm leading-none text-neutral-600 disabled:opacity-30"
+          aria-label="확대"
+        >
+          ＋
+        </button>
+        {zoom !== 1 && (
+          <button
+            type="button"
+            onClick={() => setZoom(() => 1)}
+            className="absolute top-1/2 right-0 -translate-y-1/2 rounded border border-neutral-300 px-1.5 py-0.5 text-[11px] text-neutral-500 hover:bg-neutral-50"
+          >
+            초기화
+          </button>
         )}
+      </div>
+      <div
+        className="relative overflow-auto rounded-lg bg-neutral-50 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        style={{ width: baseWidth, maxWidth: "100%", height: baseHeight }}
+      >
+        <div className="relative" style={{ width: displayedWidth, height: displayedHeight }}>
+          <ReactCrop
+            crop={displayCrop}
+            onChange={(c) => setDisplayCrop(c)}
+            onComplete={(c) => {
+              const box = displayedToNaturalBox(c, displayedWidth, rotatedSize.width);
+              onBoxChange(box);
+              onUserResize?.(box);
+            }}
+          >
+            <img
+              src={rotatedDataUrl}
+              alt="회전된 원본"
+              style={{ width: displayedWidth, height: displayedHeight, display: "block" }}
+            />
+          </ReactCrop>
+
+          {/* 보조선(수평 기준선) - 항상 노출, 현재 크롭박스 세로 중앙에 표시 */}
+          <div
+            className="pointer-events-none absolute right-0 left-0 border-t-2 border-dashed border-sky-400"
+            style={{ top: guideLineY }}
+          />
+
+          {/* 투명 가이드 오버레이 - 토글 가능, 16개 구도 공용 임시 자리표시자 */}
+          {guideOverlayVisible && (
+            <img
+              src="/guides/generic-guide.png"
+              alt=""
+              className="pointer-events-none absolute inset-0 h-full w-full opacity-40 mix-blend-multiply"
+            />
+          )}
+        </div>
       </div>
       <p className="text-xs text-neutral-500">가이드: {getCropHint(photo.compos_id)}</p>
     </div>

@@ -32,3 +32,24 @@ body {
 .ReactCrop {
   --rc-focus-color: #8b5cf6;
 }
+
+/* 구도 옵션 칩의 미리보기 이미지가 가이드 사진 <-> 확정된 실제 사진으로 바뀔 때 뚝 끊기지
+   않고 부드럽게 전환되게 한다 - 저장이 끝나자마자 이미지가 순간적으로 바뀌는 게 깜빡임처럼
+   느껴진다는 피드백 반영. */
+@keyframes fadein {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadein-dim {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 0.6;
+  }
+}

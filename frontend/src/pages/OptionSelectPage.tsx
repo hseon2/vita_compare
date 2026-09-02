@@ -5,8 +5,10 @@ import { COMPOS } from "../config/compos";
 import { getGuideImageUrl, sideForSessionType } from "../config/guideImages";
 import { SESSION_TYPE_LABEL } from "../config/sessionTypes";
 import { useClassifyPhotos } from "../hooks/useClassifyPhotos";
+import { useDeletePhoto } from "../hooks/useDeletePhoto";
 import { usePatchPhoto } from "../hooks/usePatchPhoto";
 import { usePhotos } from "../hooks/usePhotos";
+import { useUploadPhotos } from "../hooks/useUploadPhotos";
 import { deriveModeFromPhotos, sessionTypesForMode } from "../utils/derive";
 import type { SessionType } from "../api/types";
 
@@ -19,6 +21,9 @@ export function OptionSelectPage() {
   const photosQuery = usePhotos(sessionId);
   const patchPhoto = usePatchPhoto(sessionId!);
   const classifyPhotos = useClassifyPhotos(sessionId!);
+  const deletePhoto = useDeletePhoto(sessionId!);
+  const uploadPhotos = useUploadPhotos(sessionId!);
+  const addFileInputRef = useRef<HTMLInputElement>(null);
 
   const allPhotos = useMemo(() => photosQuery.data?.photos ?? [], [photosQuery.data]);
   const mode = photosQuery.data ? deriveModeFromPhotos(photosQuery.data) : "standard";
@@ -146,6 +151,20 @@ export function OptionSelectPage() {
     if (idx !== -1) setViewIndex(idx);
   }
 
+  function handleDeletePhoto(photoId: string) {
+    if (!window.confirm("정말 삭제하시겠어요?")) return;
+    deletePhoto.mutate(photoId);
+    // 지금 보고 있는 사진이 삭제되면 목록이 줄어들며 인덱스가 밀릴 수 있으니, 다음 refetch 때
+    // 재계산되도록 뷰 인덱스를 초기화한다(재조회 이펙트가 알아서 적절한 위치를 다시 잡는다).
+    if (currentPhoto?.photo_id === photoId) setViewIndex(null);
+  }
+
+  async function handleAddFiles(files: File[]) {
+    if (files.length === 0 || !currentPhoto) return;
+    await uploadPhotos.mutateAsync({ sessionType: currentPhoto.session_type, sessionDate: null, files });
+    classifyPhotos.mutate();
+  }
+
   if (!currentPhoto || !editSessionType) {
     return <p className="py-8 text-sm text-neutral-400">불러오는 중...</p>;
   }
@@ -167,11 +186,19 @@ export function OptionSelectPage() {
   const canAdvance = !!editSessionType && editComposId > 0;
 
   return (
-    <div className="flex flex-col gap-4 py-4 lg:flex-row lg:items-start">
-      <div className="flex min-w-0 flex-1 flex-col gap-4">
+    <div className="flex flex-col gap-3 py-4">
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[9fr_11fr] lg:items-start lg:gap-4">
+      <div className="flex min-w-0 flex-col gap-4">
+        <div>
+          <p className="text-lg font-bold text-neutral-800">각 사진을 확인한 후 구도를 선택해주세요.</p>
+          <p className="mt-1 text-xs text-red-500">
+            시스템이 1차로 촬영 시점·구도를 자동 선택해뒀어요. 다르면 오른쪽에서 직접 골라주세요.
+          </p>
+        </div>
         <div className="flex items-center justify-between">
           <p className="text-sm text-neutral-500">
-            {SESSION_TYPE_LABEL[currentPhoto.session_type]} {passIndex} / {passPhotos.length}
+            <span className="font-bold text-neutral-700">{SESSION_TYPE_LABEL[currentPhoto.session_type]}</span>{" "}
+            {passIndex} / {passPhotos.length}
             <span className="ml-2 text-xs text-neutral-400">
               (전체 {viewIndex! + 1} / {reviewQueue.length})
             </span>
@@ -186,28 +213,70 @@ export function OptionSelectPage() {
 
         <div className="flex gap-2 overflow-x-auto pb-1">
           {passPhotos.map((p) => (
-            <button
-              key={p.photo_id}
-              type="button"
-              onClick={() => jumpTo(p.photo_id)}
-              className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 bg-neutral-100 ${
-                p.photo_id === currentPhoto.photo_id ? "border-brand-700" : "border-transparent"
-              }`}
-            >
-              <img src={p.thumbnail_url} alt="" className="h-full w-full object-contain" />
+            <div key={p.photo_id} className="group relative h-16 w-16 shrink-0">
+              <button
+                type="button"
+                onClick={() => jumpTo(p.photo_id)}
+                className={`h-full w-full overflow-hidden rounded-lg border-2 bg-neutral-100 ${
+                  p.photo_id === currentPhoto.photo_id ? "border-brand-700" : "border-transparent"
+                }`}
+              >
+                <img src={p.thumbnail_url} alt="" className="h-full w-full object-contain" />
+              </button>
               {p.option_confirmed && (
-                <span className="absolute top-0.5 right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white shadow">
+                <span className="pointer-events-none absolute top-0.5 right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white shadow transition-opacity group-hover:opacity-0">
                   ✓
                 </span>
               )}
-            </button>
+              {/* 마우스오버 시에만 삭제 버튼 노출 - 평소엔 확인 체크마크가 그 자리를 대신 보여준다. */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeletePhoto(p.photo_id);
+                }}
+                className="absolute top-0.5 right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white opacity-0 shadow transition-opacity group-hover:opacity-100"
+                aria-label="사진 삭제"
+              >
+                ✕
+              </button>
+            </div>
           ))}
+          {/* 옵션 선택 화면에서도 바로 사진을 추가할 수 있게 한다 - 업로드 화면으로 돌아가지
+              않아도 빠진 사진을 채워 넣을 수 있다. */}
+          <button
+            type="button"
+            onClick={() => addFileInputRef.current?.click()}
+            disabled={uploadPhotos.isPending}
+            className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border-2 border-dashed border-neutral-300 text-lg text-neutral-400 hover:border-brand-300 hover:text-brand-600 disabled:opacity-50"
+            aria-label="사진 추가"
+          >
+            {uploadPhotos.isPending ? (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-300 border-t-brand-600" />
+            ) : (
+              "+"
+            )}
+          </button>
+          <input
+            ref={addFileInputRef}
+            type="file"
+            accept="image/jpeg,image/png"
+            multiple
+            className="hidden"
+            onChange={async (e) => {
+              const files = Array.from(e.target.files ?? []);
+              e.target.value = "";
+              if (files.length > 0) await handleAddFiles(files);
+            }}
+          />
         </div>
 
         <div className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm">
           {/* 모바일에서는 세로 공간을 너무 많이 잡아먹어서(aspect-3/4 그대로면 화면 대부분을
               차지) 높이를 제한해 절반 정도로 줄인다 - 큰 화면(sm 이상)에서는 원래대로. */}
-          <div className="relative mx-auto aspect-3/4 max-h-[38vh] w-full max-w-sm overflow-hidden rounded-xl bg-neutral-100 sm:max-h-none">
+          {/* 큰 화면에서도 이 미리보기가 오른쪽 사이드바(구도 옵션+버튼)보다 커지지 않게 높이를
+              고정해서, 세로 스크롤 없이 두 영역이 한 화면에 같이 들어오게 한다. */}
+          <div className="relative mx-auto aspect-3/4 max-h-[26vh] w-full max-w-[220px] overflow-hidden rounded-xl bg-neutral-100">
             <img
               src={currentPhoto.thumbnail_url}
               alt={currentPhoto.original_filename}
@@ -221,7 +290,7 @@ export function OptionSelectPage() {
             )}
           </div>
           <div className="flex items-center justify-between">
-            <span className="truncate text-xs text-neutral-400">{currentPhoto.original_filename}</span>
+            <span className="min-w-0 line-clamp-2 text-xs font-medium text-neutral-600">{currentPhoto.original_filename}</span>
             <ConfidenceBadge
               confidence={currentPhoto.classification_confidence}
               lowConfidence={currentPhoto.low_confidence}
@@ -229,57 +298,50 @@ export function OptionSelectPage() {
               manuallyConfirmed={currentPhoto.option_confirmed}
             />
           </div>
-        </div>
 
-        {duplicateConflict && (
-          <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            이미 다른 사진이 이 구도로 확정돼 있어요. 그래도 진행은 되지만, 나중에 크롭
-            화면에서 한쪽만 반영될 수 있으니 가능하면 다른 번호로 바꿔주세요.
-          </p>
-        )}
-        {patchPhoto.isPending && (
-          <p className="flex items-center gap-1.5 text-xs text-neutral-400">
-            <span className="h-3 w-3 animate-spin rounded-full border-2 border-neutral-300 border-t-brand-600" />
-            저장 중 (포즈 재검출·크롭 계산)...
-          </p>
-        )}
-
-        {/* "다음 사진" 이동과 "다음 단계로" 이동을 서로 다른 버튼으로 확실히 구분한다 - 하나의
-            버튼이 위치에 따라 라벨만 바뀌면 뭐가 눌리는지 헷갈린다는 피드백 반영. */}
-        <div className="flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={handlePrev}
-            disabled={viewIndex === 0}
-            className="rounded-xl border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-40"
-          >
-            ← 이전 사진
-          </button>
-          {!isLastPhoto && (
+          <div className="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={handlePrev}
+              disabled={viewIndex === 0}
+              className="rounded-xl border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-600 disabled:opacity-40"
+            >
+              ← 이전 사진
+            </button>
+            {!isLastPhoto && (
+              <button
+                type="button"
+                onClick={handleNext}
+                disabled={!canAdvance || patchPhoto.isPending}
+                className="rounded-xl bg-brand-700 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-800 disabled:opacity-50"
+              >
+                다음 사진 →
+              </button>
+            )}
+          </div>
+          {isLastPhoto && (
             <button
               type="button"
               onClick={handleNext}
               disabled={!canAdvance || patchPhoto.isPending}
-              className="rounded-xl bg-brand-700 px-5 py-2.5 font-medium text-white shadow-sm transition-colors hover:bg-brand-800 disabled:opacity-50"
+              className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
             >
-              {patchPhoto.isPending ? "저장 중..." : "다음 사진 →"}
+              ✓ 마지막 사진 확인 완료 - 크롭 단계로 이동
             </button>
           )}
         </div>
 
-        {isLastPhoto && (
-          <button
-            type="button"
-            onClick={handleNext}
-            disabled={!canAdvance || patchPhoto.isPending}
-            className="flex items-center justify-center gap-2 rounded-xl border-2 border-emerald-600 bg-emerald-600 px-5 py-3 font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:opacity-50"
-          >
-            {patchPhoto.isPending ? "저장 중..." : "✓ 마지막 사진 확인 완료 - 크롭 단계로 이동"}
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => navigate(`/s/${sessionId}/upload`)}
+          className="self-start text-xs text-neutral-600 underline hover:text-neutral-800"
+        >
+          ← 이전 단계로 돌아가기
+        </button>
       </div>
 
-      <aside className="flex w-full flex-col gap-4 rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm lg:sticky lg:top-4 lg:w-96 lg:shrink-0">
+      <div className="flex flex-col gap-3 lg:sticky lg:top-4">
+        <aside className="flex w-full flex-col gap-4 rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm">
         <div className="flex flex-col gap-1.5">
           <span className="text-xs font-semibold text-neutral-500">촬영 시점</span>
           <div className="flex gap-2">
@@ -299,70 +361,111 @@ export function OptionSelectPage() {
             ))}
           </div>
         </div>
+      </aside>
 
+      <aside className="flex w-full flex-col gap-4 rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm">
         <div className="flex flex-col gap-1.5">
           <span className="text-xs font-semibold text-neutral-500">
             구도 (1~16) - {SESSION_TYPE_LABEL[editSessionType]} 현황
           </span>
-          <div className="grid grid-cols-4 gap-1.5">
-            {COMPOS.map(([composId, label]) => {
-              const guideImg = getGuideImageUrl(composId, sideForSessionType(editSessionType));
-              const selected = composId === editComposId;
-              const confirmedPhoto = allPhotos.find(
-                (p) => p.session_type === editSessionType && p.option_confirmed && p.compos_id === composId,
-              );
-              // 이미 다른 사진이 이 번호로 확정돼 있는지 표시만 한다 - 예전엔 아예 못 고르게
-              // 막았는데, AI가 여러 사진을 같은 구도로 추천하면 고를 수 있는 번호가 하나도
-              // 안 남아 진행이 막히는 막다른 골목이 됐다(실사용 중 발견). 지금 편집 중인 사진
-              // 자신이 이미 이 번호로 확정된 경우(재확인)는 "타 사진 사용 중" 표시에서 제외.
-              const takenByOther = !!confirmedPhoto && confirmedPhoto.photo_id !== currentPhoto.photo_id;
-              return (
-                <button
-                  key={composId}
-                  type="button"
-                  title={takenByOther ? `${composId}. ${label} (이미 다른 사진에 배정됨 - 그래도 선택 가능)` : `${composId}. ${label}`}
-                  onClick={() => selectComposId(composId)}
-                  className={`flex flex-col items-center gap-1 rounded-lg border p-1 ${
-                    selected
-                      ? "border-brand-700 bg-brand-50"
-                      : takenByOther
-                        ? "border-amber-300 bg-amber-50/60 hover:bg-amber-50"
-                        : "border-neutral-200 hover:bg-neutral-50"
-                  }`}
-                >
-                  <div className="relative aspect-3/4 w-full overflow-hidden rounded bg-neutral-100">
-                    {confirmedPhoto ? (
-                      <img
-                        src={confirmedPhoto.thumbnail_url}
-                        alt={label}
-                        className="h-full w-full object-contain"
-                      />
-                    ) : guideImg ? (
-                      <img src={guideImg} alt={label} className="h-full w-full object-cover opacity-60" />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-[10px] text-neutral-300">
-                        {composId}
-                      </div>
-                    )}
-                    {confirmedPhoto && (
-                      <span className="absolute top-0.5 right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white shadow">
-                        ✓
+          {/* 전면/측면/후면을 각각 한 줄에 다 들어오게 묶어서(6/4/6개) 총 3줄로 만든다 -
+              기존 4x4 그리드(4줄)보다 한 줄 줄어들고, 그룹별로도 한눈에 훑기 쉬워진다. */}
+          <div className="flex flex-col gap-1.5">
+            {(
+              [
+                ["전면", COMPOS.slice(0, 6)],
+                ["측면", COMPOS.slice(6, 10)],
+                ["후면", COMPOS.slice(10, 16)],
+              ] as Array<[string, typeof COMPOS]>
+            ).map(([rowLabel, row]) => (
+              <div key={rowLabel} className="flex flex-col gap-1">
+                <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700">
+                  <span className="h-1.5 w-1.5 rounded-full bg-brand-500" />
+                  {rowLabel}
+                </span>
+                <div className="grid grid-cols-6 gap-1">
+                {row.map(([composId, label]) => {
+                  const guideImg = getGuideImageUrl(composId, sideForSessionType(editSessionType));
+                  const selected = composId === editComposId;
+                  const confirmedPhoto = allPhotos.find(
+                    (p) => p.session_type === editSessionType && p.option_confirmed && p.compos_id === composId,
+                  );
+                  // 이미 다른 사진이 이 번호로 확정돼 있는지 표시만 한다 - 예전엔 아예 못 고르게
+                  // 막았는데, AI가 여러 사진을 같은 구도로 추천하면 고를 수 있는 번호가 하나도
+                  // 안 남아 진행이 막히는 막다른 골목이 됐다(실사용 중 발견). 지금 편집 중인 사진
+                  // 자신이 이미 이 번호로 확정된 경우(재확인)는 "타 사진 사용 중" 표시에서 제외.
+                  const takenByOther = !!confirmedPhoto && confirmedPhoto.photo_id !== currentPhoto.photo_id;
+                  return (
+                    <button
+                      key={composId}
+                      type="button"
+                      title={takenByOther ? `${composId}. ${label} (이미 다른 사진에 배정됨 - 그래도 선택 가능)` : `${composId}. ${label}`}
+                      onClick={() => selectComposId(composId)}
+                      className={`flex flex-col items-center gap-[3px] rounded-lg border px-[3px] py-[5px] transition-all ${
+                        selected
+                          ? "border-[3px] border-brand-700 bg-brand-50 ring-2 ring-brand-200"
+                          : takenByOther
+                            ? "border-amber-300 bg-amber-50/60 hover:bg-amber-50"
+                            : "border-neutral-200 hover:bg-neutral-50"
+                      }`}
+                    >
+                      <span
+                        className={`line-clamp-2 w-full text-center text-[13px] leading-tight font-bold ${
+                          selected ? "text-brand-800" : "text-neutral-600"
+                        }`}
+                      >
+                        {composId}. {label.split("_")[1] ?? label}
                       </span>
-                    )}
-                  </div>
-                  <span
-                    className={`line-clamp-2 text-center text-[11px] leading-tight ${
-                      selected ? "font-semibold text-brand-800" : "text-neutral-500"
-                    }`}
-                  >
-                    {composId}. {label}
-                  </span>
-                </button>
-              );
-            })}
+                      <div className="relative mx-auto aspect-3/4 w-[68%] overflow-hidden rounded bg-neutral-100">
+                        {confirmedPhoto ? (
+                          <img
+                            key={confirmedPhoto.thumbnail_url}
+                            src={confirmedPhoto.thumbnail_url}
+                            alt={label}
+                            className="h-full w-full animate-[fadein_0.2s_ease-out_forwards] object-contain"
+                          />
+                        ) : guideImg ? (
+                          <img
+                            key={guideImg}
+                            src={guideImg}
+                            alt={label}
+                            className="h-full w-full animate-[fadein-dim_0.2s_ease-out_forwards] object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-[10px] text-neutral-300">
+                            {composId}
+                          </div>
+                        )}
+                        {confirmedPhoto && (
+                          <span className="absolute top-0.5 right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-600 text-[9px] font-bold text-white shadow">
+                            ✓
+                          </span>
+                        )}
+                        {/* 옵션을 고른 직후 저장(디바운스)이 끝날 때까지 이 칸에 로딩 표시 -
+                            선택 후 썸네일이 바뀌는 게 렉처럼 느껴진다는 피드백 반영. */}
+                        {selected && patchPhoto.isPending && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-white/60">
+                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-300 border-t-brand-600" />
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
+
+        {duplicateConflict && (
+          <p className="rounded-lg bg-amber-50 px-2.5 py-2 text-xs text-amber-700">
+            이미 다른 사진이 이 구도로 확정돼 있어요. 그대로 진행하면 크롭 단계에서 먼저 확정된 사진이 우선 사용돼요.
+          </p>
+        )}
       </aside>
+      </div>
+      </div>
     </div>
   );
 }

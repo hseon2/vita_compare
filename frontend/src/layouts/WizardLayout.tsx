@@ -25,14 +25,16 @@ export function WizardLayout() {
   const reachability = computeReachability(photosQuery.data);
   const currentStep = (STEP_ORDER.find((s) => s.path === step)?.step ?? "upload") as WizardStep;
 
+  // 업로드 화면은 사진 그리드가 아니라 순차 입력 폼이라 좁은 폭이 더 잘 어울린다 - 그 폭에
+  // 헤더(로고+스텝 인디케이터)도 같이 맞춰서 헤더만 넓고 본문만 좁아 보이는 어긋남을 없앤다.
+  // 다른 스텝(옵션선택/크롭 등)은 사진을 나란히 비교해야 해서 기존 넓은 폭을 유지한다.
+  const containerMaxWidth = currentStep === "upload" ? "max-w-xl" : "max-w-5xl";
+
   return (
-    <div className="mx-auto max-w-5xl px-4 pb-16">
+    <div className={`mx-auto ${containerMaxWidth} px-4 pb-16 transition-[max-width]`}>
       <header className="pt-8">
-        <Link to="/" className="inline-flex items-center gap-2 text-lg font-bold text-brand-800">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-700 text-sm font-black text-white">
-            V
-          </span>
-          Vita Compare
+        <Link to="/" className="inline-flex items-center text-lg font-bold text-brand-800">
+          thebeautycl
         </Link>
         <StepIndicator sessionId={sessionId ?? null} currentStep={currentStep} reachability={reachability} />
       </header>

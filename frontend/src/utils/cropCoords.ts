@@ -28,23 +28,20 @@ export function resizeBoxKeepingCenter(box: CropBox, targetW: number, targetH: n
   ];
 }
 
-/** 전-후 크롭 동기화용: box의 중심과 "크기"(면적)는 그대로 둔 채 가로세로 비율만 targetRatio
- * (w/h)에 맞춘다. 한 사진의 크롭박스를 드래그로 바꾸면 반대쪽 사진도 같은 비율로 맞춰지되,
- * 반대쪽 사진 자체의 크롭 크기(원본에서 실제로 잡아낸 영역의 넓이)는 그대로 유지된다 -
- * 촬영 거리가 달라 두 사진의 인물 크기가 다를 수 있으므로, 픽셀 크기까지 강제로 똑같이 맞추면
- * 오히려 어색해진다. */
-export function applyRatioKeepingArea(box: CropBox, targetRatio: number): CropBox {
+/** 크롭박스가 이미지(회전 캔버스) 바깥으로 나가지 않게 위치/크기를 보정한다. 전-후 동기화
+ * (resizeBoxKeepingCenter)나 회전 시 재스케일 과정에서 박스가 경계 밖으로 밀려날 수 있어,
+ * 표시 직전에 항상 이 함수를 거쳐 사진 범위 안으로 잘라낸다. */
+export function clampBoxToBounds(box: CropBox, maxW: number, maxH: number): CropBox {
   const [x0, y0, x1, y1] = box;
-  const cx = (x0 + x1) / 2;
-  const cy = (y0 + y1) / 2;
-  const area = (x1 - x0) * (y1 - y0);
-  const newW = Math.sqrt(area * targetRatio);
-  const newH = Math.sqrt(area / targetRatio);
+  const w = Math.min(x1 - x0, maxW);
+  const h = Math.min(y1 - y0, maxH);
+  const clampedX0 = Math.min(Math.max(x0, 0), maxW - w);
+  const clampedY0 = Math.min(Math.max(y0, 0), maxH - h);
   return [
-    Math.round(cx - newW / 2),
-    Math.round(cy - newH / 2),
-    Math.round(cx + newW / 2),
-    Math.round(cy + newH / 2),
+    Math.round(clampedX0),
+    Math.round(clampedY0),
+    Math.round(clampedX0 + w),
+    Math.round(clampedY0 + h),
   ];
 }
 

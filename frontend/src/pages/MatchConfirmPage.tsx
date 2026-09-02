@@ -5,7 +5,7 @@ import { CroppedThumbnail } from "../components/CroppedThumbnail";
 import { SESSION_TYPE_LABEL } from "../config/sessionTypes";
 import { useBodyComp, useSaveBodyComp } from "../hooks/useBodyComp";
 import { usePhotos } from "../hooks/usePhotos";
-import { deriveModeFromPhotos, getSetPairing } from "../utils/derive";
+import { deriveModeFromPhotos, getSetPairing, pickPrimaryPhoto } from "../utils/derive";
 import type { BodyCompRowIn, PhotoOut } from "../api/types";
 
 export function MatchConfirmPage() {
@@ -35,9 +35,20 @@ export function MatchConfirmPage() {
   const mode = deriveModeFromPhotos(photosQuery.data);
   const pairing = getSetPairing(mode);
 
-  const byComposAndType = new Map<string, PhotoOut>();
+  // 같은 자리(구도+세션타입)에 사진이 여러 장 배정된 경우, 크롭 화면과 동일한 규칙으로
+  // "대표" 사진 하나만 골라 매칭 확인에 쓴다(그래야 크롭에서 확인한 사진이 그대로 이어진다).
+  const bySlot = new Map<string, PhotoOut[]>();
   for (const p of photosQuery.data.photos) {
-    if (p.compos_id > 0) byComposAndType.set(`${p.compos_id}:${p.session_type}`, p);
+    if (p.compos_id <= 0) continue;
+    const key = `${p.compos_id}:${p.session_type}`;
+    const arr = bySlot.get(key) ?? [];
+    arr.push(p);
+    bySlot.set(key, arr);
+  }
+  const byComposAndType = new Map<string, PhotoOut>();
+  for (const [key, candidates] of bySlot) {
+    const primary = pickPrimaryPhoto(candidates);
+    if (primary) byComposAndType.set(key, primary);
   }
 
   const composIds = Array.from(

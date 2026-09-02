@@ -16,8 +16,8 @@ export function BatchUploadSlot({ onFilesSelected, uploading }: BatchUploadSlotP
         <h3 className="font-semibold text-neutral-800">전/후 사진 한 번에 업로드</h3>
       </div>
       <p className="mb-3 text-xs text-neutral-500">
-        시작일/종료일(장기 모드는 중간일 포함) 사진을 한꺼번에 선택하면 촬영일 기준으로 자동
-        구분되어 아래 섹션에 나뉘어 들어갑니다.
+        시작일/종료일 사진을 한꺼번에 선택하면 촬영일 기준으로 자동 구분되어 아래 섹션에 나뉘어
+        들어갑니다.
       </p>
       <input
         ref={inputRef}
@@ -37,7 +37,7 @@ export function BatchUploadSlot({ onFilesSelected, uploading }: BatchUploadSlotP
         onClick={() => inputRef.current?.click()}
         className="rounded-xl bg-brand-700 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-brand-800 disabled:opacity-50"
       >
-        {uploading ? "업로드 중..." : "사진 한꺼번에 선택"}
+        {uploading ? "업로드 중..." : "사진 한 번에 선택하기"}
       </button>
     </div>
   );

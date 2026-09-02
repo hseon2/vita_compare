@@ -5,6 +5,17 @@ interface ConfidenceBadgeProps {
   manuallyConfirmed: boolean;
 }
 
+function Badge({ dotColor, bg, text, children }: { dotColor: string; bg: string; text: string; children: React.ReactNode }) {
+  return (
+    <span
+      className={`inline-flex w-fit shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs leading-none font-medium whitespace-nowrap ${bg} ${text}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${dotColor}`} />
+      {children}
+    </span>
+  );
+}
+
 export function ConfidenceBadge({
   confidence,
   lowConfidence,
@@ -13,28 +24,28 @@ export function ConfidenceBadge({
 }: ConfidenceBadgeProps) {
   if (poseError) {
     return (
-      <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+      <Badge dotColor="bg-red-500" bg="bg-red-50" text="text-red-700">
         포즈 미검출
-      </span>
+      </Badge>
     );
   }
   if (manuallyConfirmed) {
     return (
-      <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+      <Badge dotColor="bg-emerald-500" bg="bg-emerald-50" text="text-emerald-700">
         확인됨
-      </span>
+      </Badge>
     );
   }
   if (lowConfidence) {
     return (
-      <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+      <Badge dotColor="bg-amber-500" bg="bg-amber-50" text="text-amber-800">
         확인 필요 ({Math.round(confidence * 100)}%)
-      </span>
+      </Badge>
     );
   }
   return (
-    <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+    <Badge dotColor="bg-slate-400" bg="bg-slate-50" text="text-slate-600">
       {Math.round(confidence * 100)}%
-    </span>
+    </Badge>
   );
 }

@@ -5,7 +5,7 @@
 import JSZip from "jszip";
 import pptxgen from "pptxgenjs";
 import { COMPOS, WIDE_COMPOS } from "../config/compos";
-import { getSetPairing } from "../utils/derive";
+import { getSetPairing, pickPrimaryPhoto } from "../utils/derive";
 import { type CroppedImage, exportCroppedImage } from "./cropper";
 import { loadImageFromBlob } from "./pose";
 import { computePhotoSlideLayout, SLIDE_W } from "./slideLayout";
@@ -153,14 +153,26 @@ export async function generatePresentation(
 ): Promise<Blob> {
   onProgress?.({ progress: 0.05, message: "사진 정리 중" });
 
-  const grouped = new Map<string, Map<number, StoredPhoto>>();
+  // 같은 자리(세션타입+구도)에 사진이 여러 장(중복) 배정된 경우, 크롭 화면·매칭 확인과 동일한
+  // 규칙(pickPrimaryPhoto)으로 "대표" 사진 하나만 골라 PPT에 쓴다 - 그래야 사용자가 크롭
+  // 화면에서 직접 확인한 사진이 실제로 최종 결과물에 들어간다.
+  const bySlot = new Map<string, StoredPhoto[]>();
   for (const p of photos) {
     if (p.compos_id <= 0) continue;
-    if (!grouped.has(p.session_type)) grouped.set(p.session_type, new Map());
-    grouped.get(p.session_type)!.set(p.compos_id, p);
+    const key = `${p.session_type}:${p.compos_id}`;
+    const arr = bySlot.get(key) ?? [];
+    arr.push(p);
+    bySlot.set(key, arr);
+  }
+  const grouped = new Map<string, Map<number, StoredPhoto>>();
+  for (const candidates of bySlot.values()) {
+    const primary = pickPrimaryPhoto(candidates);
+    if (!primary) continue;
+    if (!grouped.has(primary.session_type)) grouped.set(primary.session_type, new Map());
+    grouped.get(primary.session_type)!.set(primary.compos_id, primary);
   }
 
-  const allRecords = photos.filter((p) => p.compos_id > 0);
+  const allRecords = Array.from(grouped.values()).flatMap((m) => Array.from(m.values()));
   const total = allRecords.length || 1;
 
   onProgress?.({ progress: 0.1, message: "사진 크롭 처리 중" });

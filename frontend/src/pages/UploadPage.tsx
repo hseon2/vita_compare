@@ -45,7 +45,7 @@ export function UploadPage() {
   const [lightboxPhoto, setLightboxPhoto] = useState<PhotoOut | null>(null);
   // 체크하면 시작/중간/종료 사진을 따로따로가 아니라 한꺼번에 선택하고, 촬영일(파일 날짜) 기준으로
   // 자동 구분해서 업로드한다. 정확한 분류가 아니므로 어긋나면 아래 섹션에서 드래그로 옮길 수 있다.
-  const [batchMode, setBatchMode] = useState(false);
+  const [batchMode, setBatchMode] = useState(true);
   const [batchUploading, setBatchUploading] = useState(false);
 
   const mode: Mode = sessionId ? (metaQuery.data?.mode ?? "standard") : draft.mode;
@@ -54,9 +54,14 @@ export function UploadPage() {
   // 환자명: 세션이 있으면 서버값 기준(디바운스 저장), 없으면 로컬 초안(Zustand)에 바로 반영
   const [nameDraft, setNameDraft] = useState("");
   const nameInitialized = useRef(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (sessionId && metaQuery.data && !nameInitialized.current) {
-      setNameDraft(metaQuery.data.patient_name);
+      // 이름을 입력하기 전에 사진부터 올리면 서버엔 임시 이름("이름없음-xxxx")으로 세션이
+      // 만들어지는데, 그걸 그대로 입력창에 채워 넣으면 사용자가 실제로 입력한 값처럼
+      // 보여서 헷갈린다 - 임시 이름이면 빈 칸으로 두고 placeholder 텍스트로만 안내한다.
+      const name = metaQuery.data.patient_name;
+      setNameDraft(PLACEHOLDER_NAME_RE.test(name) ? "" : name);
       nameInitialized.current = true;
     }
   }, [sessionId, metaQuery.data]);
@@ -176,19 +181,18 @@ export function UploadPage() {
     if (!sessionId || !photosQuery.data?.photos.length) return;
     const trimmed = patientName.trim();
     if (!trimmed || PLACEHOLDER_NAME_RE.test(trimmed)) {
-      setError("환자명을 입력해주세요.");
+      setError("이름을 입력해주세요.");
+      nameInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      nameInputRef.current?.focus();
       return;
     }
     navigate(`/s/${sessionId}/options`);
   }
 
-  // "/"과 "/s/:id/upload"는 이제 WizardLayout이 헤더+스텝 인디케이터를 항상 동일하게
-  // 감싸주므로, 이 컴포넌트 자체는 다른 위저드 화면들과 같은 폭(WizardLayout의 max-w-5xl)
-  // 안에서 렌더된다. 다만 이 화면은 사진 그리드가 아니라 순차적인 입력 폼이라, 내용은 더
-  // 좁게(max-w-xl) 잡는다 - mx-auto로 가운데 정렬하면 위 로고/스텝 인디케이터(왼쪽 정렬)와
-  // 시작 위치가 어긋나 보이므로, 로고와 같은 왼쪽 기준선에 맞춘다.
+  // WizardLayout이 이 화면(업로드)에서는 헤더까지 포함해 max-w-xl로 좁혀서 렌더하므로(다른
+  // 스텝은 사진 비교용으로 넓게 유지), 여기서는 폭을 따로 잡지 않고 그 안에서 세로로만 쌓는다.
   return (
-    <div className="flex w-full max-w-xl flex-col gap-6 py-6">
+    <div className="flex flex-col gap-6 pt-4 pb-6">
       <div className="relative flex flex-col gap-3 overflow-hidden">
         {/* 헤더 뒤 은은한 보라 글로우 - 장식 목적, 클릭 영역과 겹치지 않게 pointer-events-none.
             overflow-hidden으로 감싸서 좁은 화면에서 가로 스크롤이 생기지 않게 한다. */}
@@ -196,22 +200,9 @@ export function UploadPage() {
           aria-hidden
           className="pointer-events-none absolute -top-10 -left-6 h-36 w-36 rounded-full bg-brand-200/40 blur-3xl"
         />
-        <div className="flex items-start justify-between gap-3">
-          <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700">
-            <span className="h-1.5 w-1.5 rounded-full bg-brand-500" />
-            thebeautycl
-          </span>
-          <button
-            type="button"
-            onClick={handleReset}
-            className="shrink-0 rounded-xl border border-neutral-200 px-2.5 py-1 text-xs font-medium text-neutral-500 hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-700"
-          >
-            초기화
-          </button>
-        </div>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-neutral-900">환자 정보를 입력하세요</h1>
-          <p className="mt-1 text-sm text-neutral-500">촬영 사진을 업로드하면 다음 단계에서 AI가 구도를 자동으로 분류해요.</p>
+          <h1 className="text-2xl font-bold tracking-tight text-neutral-900">이름과 사진을 등록해주세요</h1>
+          <p className="mt-1 text-sm text-neutral-500">사진을 업로드한 뒤 Before/After PPT를 생성해보세요.</p>
         </div>
       </div>
 
@@ -219,21 +210,33 @@ export function UploadPage() {
         <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
       )}
 
+      {/* 초기화는 "이전 작업 이어하기" 배너가 뜰 때(=되돌아갈 이전 세션이 있을 때)만
+          같이 보여준다 - 그 외엔 아직 아무 데이터도 없어서 초기화할 의미가 없다. */}
       {lastSessionId && (
-        <button
-          type="button"
-          onClick={() => navigate(`/s/${lastSessionId}/upload`)}
-          className="flex w-full items-center justify-between rounded-2xl border border-brand-200 bg-brand-50/60 px-4 py-3 text-left text-sm font-medium text-brand-800 transition-colors hover:border-brand-300 hover:bg-brand-50"
-        >
-          이전 작업 이어하기
-          <span aria-hidden>→</span>
-        </button>
+        <div className="flex items-stretch gap-2">
+          <button
+            type="button"
+            onClick={() => navigate(`/s/${lastSessionId}/upload`)}
+            className="flex flex-1 items-center justify-between rounded-2xl border border-brand-200 bg-brand-50/60 px-4 py-3 text-left text-sm font-medium text-brand-800 transition-colors hover:border-brand-300 hover:bg-brand-50"
+          >
+            이전 작업 이어하기
+            <span aria-hidden>→</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleReset}
+            className="shrink-0 rounded-xl border border-neutral-200 px-3 text-xs font-medium text-neutral-500 transition-colors hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-700"
+          >
+            초기화
+          </button>
+        </div>
       )}
 
       <div className="flex flex-col gap-5 rounded-3xl border border-neutral-100 bg-white p-6 shadow-[0_2px_8px_-2px_rgba(16,24,40,0.08),0_4px_24px_-4px_rgba(16,24,40,0.06)]">
         <label className="flex flex-col gap-1.5 text-sm">
-          <span className="font-semibold text-neutral-800">환자명</span>
+          <span className="font-semibold text-neutral-800">이름</span>
           <input
+            ref={nameInputRef}
             className="rounded-xl border border-neutral-200 px-3.5 py-2.5 text-lg font-semibold text-neutral-900 outline-none transition-shadow focus:border-brand-400 focus:ring-4 focus:ring-brand-100"
             value={patientName}
             onChange={(e) => handleNameChange(e.target.value)}
@@ -270,11 +273,11 @@ export function UploadPage() {
       <label className="flex items-center gap-2 text-sm text-neutral-600">
         <input
           type="checkbox"
-          checked={batchMode}
-          onChange={(e) => setBatchMode(e.target.checked)}
+          checked={!batchMode}
+          onChange={(e) => setBatchMode(!e.target.checked)}
           className="h-4 w-4 rounded border-neutral-300 accent-brand-600"
         />
-        전/후 사진 한 번에 업로드 (촬영일로 자동 구분)
+        전/후 사진 따로 업로드
       </label>
 
       {batchMode && <BatchUploadSlot onFilesSelected={handleBatchFiles} uploading={batchUploading} />}
@@ -304,7 +307,7 @@ export function UploadPage() {
         type="button"
         disabled={!sessionId || !photosQuery.data?.photos.length}
         onClick={goNext}
-        className="mt-2 self-end rounded-xl bg-brand-700 px-5 py-2.5 font-medium text-white shadow-sm transition-all hover:bg-brand-800 hover:shadow-md disabled:opacity-50 disabled:shadow-none"
+        className="-mt-3 self-end rounded-xl bg-brand-700 px-5 py-2.5 font-medium text-white shadow-sm transition-all hover:bg-brand-800 hover:shadow-md disabled:opacity-50 disabled:shadow-none"
       >
         다음: 옵션 선택 →
       </button>

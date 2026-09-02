@@ -32,8 +32,8 @@ export function UploadSlot({
 
   return (
     <div
-      className={`rounded-2xl border bg-white p-4 shadow-sm transition-colors ${
-        isDragOver ? "border-brand-500 ring-2 ring-brand-300" : "border-neutral-200"
+      className={`rounded-2xl border bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_1px_3px_rgba(16,24,40,0.06)] transition-colors ${
+        isDragOver ? "border-brand-500 ring-2 ring-brand-300" : "border-neutral-100"
       }`}
       onDragOver={
         dragEnabled

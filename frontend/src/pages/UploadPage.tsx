@@ -183,25 +183,36 @@ export function UploadPage() {
   }
 
   // "/"과 "/s/:id/upload"는 이제 WizardLayout이 헤더+스텝 인디케이터를 항상 동일하게
-  // 감싸주므로, 이 컴포넌트 자체는 폭 제한이나 제목을 따로 두지 않고 다른 위저드 화면들과
-  // 완전히 같은 모양으로 렌더한다.
+  // 감싸주므로, 이 컴포넌트 자체는 다른 위저드 화면들과 같은 폭(WizardLayout의 max-w-5xl)
+  // 안에서 렌더된다. 다만 이 화면은 사진 그리드가 아니라 순차적인 입력 폼이라, 내용은 더
+  // 좁게(max-w-xl) 잡는다 - mx-auto로 가운데 정렬하면 위 로고/스텝 인디케이터(왼쪽 정렬)와
+  // 시작 위치가 어긋나 보이므로, 로고와 같은 왼쪽 기준선에 맞춘다.
   return (
-    <div className="flex flex-col gap-5 py-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex flex-col gap-1.5">
+    <div className="flex w-full max-w-xl flex-col gap-6 py-6">
+      <div className="relative flex flex-col gap-3 overflow-hidden">
+        {/* 헤더 뒤 은은한 보라 글로우 - 장식 목적, 클릭 영역과 겹치지 않게 pointer-events-none.
+            overflow-hidden으로 감싸서 좁은 화면에서 가로 스크롤이 생기지 않게 한다. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -top-10 -left-6 h-36 w-36 rounded-full bg-brand-200/40 blur-3xl"
+        />
+        <div className="flex items-start justify-between gap-3">
           <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700">
             <span className="h-1.5 w-1.5 rounded-full bg-brand-500" />
-            완전 로컬 처리 · AI 자동 분류
+            thebeautycl
           </span>
-          <p className="text-sm text-neutral-500">환자 정보를 입력하고 촬영 사진을 업로드하세요.</p>
+          <button
+            type="button"
+            onClick={handleReset}
+            className="shrink-0 rounded-xl border border-neutral-200 px-2.5 py-1 text-xs font-medium text-neutral-500 hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-700"
+          >
+            초기화
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={handleReset}
-          className="shrink-0 rounded-xl border border-neutral-200 px-2.5 py-1 text-xs font-medium text-neutral-500 hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-700"
-        >
-          초기화
-        </button>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-neutral-900">환자 정보를 입력하세요</h1>
+          <p className="mt-1 text-sm text-neutral-500">촬영 사진을 업로드하면 다음 단계에서 AI가 구도를 자동으로 분류해요.</p>
+        </div>
       </div>
 
       {error && (
@@ -219,7 +230,7 @@ export function UploadPage() {
         </button>
       )}
 
-      <div className="flex flex-col gap-4 rounded-2xl border border-neutral-200 bg-white p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_1px_3px_rgba(16,24,40,0.06)]">
+      <div className="flex flex-col gap-5 rounded-3xl border border-neutral-100 bg-white p-6 shadow-[0_2px_8px_-2px_rgba(16,24,40,0.08),0_4px_24px_-4px_rgba(16,24,40,0.06)]">
         <label className="flex flex-col gap-1.5 text-sm">
           <span className="font-semibold text-neutral-800">환자명</span>
           <input

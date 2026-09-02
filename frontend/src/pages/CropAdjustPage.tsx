@@ -10,7 +10,7 @@ import { usePatchPhoto } from "../hooks/usePatchPhoto";
 import { usePhotos } from "../hooks/usePhotos";
 import { useWizardStore } from "../store/wizardStore";
 import { deriveModeFromPhotos, getSetPairing } from "../utils/derive";
-import { applyRatioKeepingArea } from "../utils/cropCoords";
+import { applyRatioKeepingArea, resizeBoxKeepingCenter } from "../utils/cropCoords";
 import type { CropBox, PhotoOut, SessionType } from "../api/types";
 
 interface EditState {
@@ -103,18 +103,27 @@ export function CropAdjustPage() {
     setEdits((prev) => (prev[photoId] ? { ...prev, [photoId]: { ...prev[photoId], cropBox: box } } : prev));
   }
 
-  // 사용자가 실제로 드래그해서 비율을 바꿨을 때만 같은 유닛의 다른 사진에도 "비율"을 맞춘다.
-  // 픽셀 크기까지 똑같이 맞추지는 않는다 - 촬영 거리가 달라 전/후 인물 크기가 다를 수 있으므로
-  // 반대쪽 사진 자체의 크롭 크기(면적)는 그대로 두고 가로세로 비율만 동기화한다.
+  // 사용자가 실제로 드래그해서 크기를 바꿨을 때 같은 유닛의 다른 사진에도 반영한다. 두 사진의
+  // 원본 이미지 픽셀 크기가 같으면(같은 카메라/구도로 찍은 전-후 사진이라 사실상 정렬돼 있는
+  // 경우) 크롭박스를 그대로 동일하게 맞추고, 크기가 다르면(촬영 거리가 달라 인물 크기가 다를
+  // 수 있음) 반대쪽 사진 자체의 크롭 크기(면적)는 유지한 채 가로세로 비율만 맞춘다.
   function handleUserResize(photoId: string, box: CropBox) {
     const w = box[2] - box[0];
     const h = box[3] - box[1];
     const ratio = w / h;
+    const sourcePhoto = currentPhotos.find((p) => p.photo_id === photoId);
     setEdits((prev) => {
       const next = { ...prev };
       for (const p of currentPhotos) {
         if (p.photo_id === photoId || !next[p.photo_id]) continue;
-        next[p.photo_id] = { ...next[p.photo_id], cropBox: applyRatioKeepingArea(next[p.photo_id].cropBox, ratio) };
+        const sameSize =
+          !!sourcePhoto && sourcePhoto.width > 0 && p.width === sourcePhoto.width && p.height === sourcePhoto.height;
+        next[p.photo_id] = {
+          ...next[p.photo_id],
+          cropBox: sameSize
+            ? resizeBoxKeepingCenter(next[p.photo_id].cropBox, w, h)
+            : applyRatioKeepingArea(next[p.photo_id].cropBox, ratio),
+        };
       }
       return next;
     });

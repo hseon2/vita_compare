@@ -30,6 +30,8 @@ export interface PhotoOut {
   photo_id: string;
   session_type: SessionType;
   original_filename: string;
+  width: number; // 원본 이미지 픽셀 크기 - 백엔드 스키마엔 없는 프론트 전용 필드(크롭 화면에서
+  height: number; // "두 사진 크기가 같으면 크롭도 동일하게" 판단에 사용)
   compos_id: number; // 0 = 미분류
   compos_label: string;
   classification_confidence: number;

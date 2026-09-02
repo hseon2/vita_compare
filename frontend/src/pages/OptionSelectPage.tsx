@@ -176,7 +176,12 @@ export function OptionSelectPage() {
               (전체 {viewIndex! + 1} / {reviewQueue.length})
             </span>
           </p>
-          {classifyPhotos.isPending && <p className="text-xs text-neutral-400">AI 분류 진행 중...</p>}
+          {classifyPhotos.isPending && (
+            <p className="flex items-center gap-1.5 text-xs text-neutral-400">
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-neutral-300 border-t-brand-600" />
+              AI 분류 진행 중...
+            </p>
+          )}
         </div>
 
         <div className="flex gap-2 overflow-x-auto pb-1">
@@ -208,6 +213,12 @@ export function OptionSelectPage() {
               alt={currentPhoto.original_filename}
               className="h-full w-full object-contain"
             />
+            {classifyPhotos.isPending && !currentPhoto.option_confirmed && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white/70 backdrop-blur-[1px]">
+                <span className="h-6 w-6 animate-spin rounded-full border-[3px] border-neutral-300 border-t-brand-600" />
+                <span className="text-xs font-medium text-neutral-600">AI가 구도를 분석하고 있어요...</span>
+              </div>
+            )}
           </div>
           <div className="flex items-center justify-between">
             <span className="truncate text-xs text-neutral-400">{currentPhoto.original_filename}</span>

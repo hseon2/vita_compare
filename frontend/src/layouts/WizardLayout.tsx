@@ -28,7 +28,10 @@ export function WizardLayout() {
   return (
     <div className="mx-auto max-w-5xl px-4 pb-16">
       <header className="pt-8">
-        <Link to="/" className="text-lg font-bold text-brand-800">
+        <Link to="/" className="inline-flex items-center gap-2 text-lg font-bold text-brand-800">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-700 text-sm font-black text-white">
+            V
+          </span>
           Vita Compare
         </Link>
         <StepIndicator sessionId={sessionId ?? null} currentStep={currentStep} reachability={reachability} />

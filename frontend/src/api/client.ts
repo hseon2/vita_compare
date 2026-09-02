@@ -4,9 +4,8 @@
 // lib/pptGenerator.ts(브라우저 내 연산)를 호출할 뿐, 사진이 어떤 서버로도 전송되지 않는다.
 import * as db from "../lib/db";
 import { classify } from "../lib/classifier";
-import { computeRotationAngle } from "../lib/leveler";
 import { detectLandmarks, loadImageFromBlob, PoseNotDetectedError } from "../lib/pose";
-import { proposeCropBox } from "../lib/cropper";
+import { defaultCropBoxForImage } from "../lib/cropper";
 import { generatePresentation } from "../lib/pptGenerator";
 import { CONFIDENCE_THRESHOLD } from "../lib/preprocessConfig";
 import type {
@@ -43,9 +42,11 @@ function getGenerateEntry(sessionId: string): GenerateEntry {
   return entry;
 }
 
-/** 업로드 직후엔 미분류 상태인 사진을 순회하며 포즈검출 -> 구도분류 -> 수평조정 -> 1차크롭까지
- * 한 번에 채운다 (backend classify.py 포팅). 이미 사람이 확정한(option_confirmed) 사진은
- * 건너뛴다 - 사진을 추가로 올린 뒤 재호출해도 기존 확정값을 덮어쓰지 않는다. */
+/** 업로드 직후엔 미분류 상태인 사진을 순회하며 포즈검출 -> 구도분류까지 채운다 (backend
+ * classify.py 포팅. 자동 수평조정/자동크롭은 사용자 요청으로 제거 - 회전은 항상 0에서 시작해
+ * 사람이 슬라이더로 조절하고, 크롭은 항상 "이미지 전체를 구도 비율로 중앙 크롭"에서 시작해
+ * 사람이 직접 조정한다). 이미 사람이 확정한(option_confirmed) 사진은 건너뛴다 - 사진을
+ * 추가로 올린 뒤 재호출해도 기존 확정값을 덮어쓰지 않는다. */
 async function classifySession(sessionId: string): Promise<ClassifyResponse> {
   const records = await db.getPhotosRaw(sessionId);
   const warnings: ClassifyWarning[] = [];
@@ -63,8 +64,7 @@ async function classifySession(sessionId: string): Promise<ClassifyResponse> {
       record.manually_confirmed = false;
 
       const img = await loadImageFromBlob(record.blob);
-      record.rotation_deg = computeRotationAngle(landmarks, img.naturalWidth, img.naturalHeight);
-      record.crop_box = proposeCropBox(img, landmarks, record.rotation_deg, composId);
+      record.crop_box = defaultCropBoxForImage(img, composId);
 
       if (confidence < CONFIDENCE_THRESHOLD) {
         warnings.push({

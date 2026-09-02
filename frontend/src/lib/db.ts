@@ -2,8 +2,8 @@
 // 저장한다 - 사진이 어떤 서버로도 전송되지 않는다. api/client.ts가 이 모듈을 호출한다.
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import { DEFAULT_BODY_COMP_LABELS, labelFor } from "../config/compos";
-import { proposeCropBox } from "./cropper";
-import { detectLandmarks, loadImageFromBlob, PoseNotDetectedError } from "./pose";
+import { defaultCropBoxForImage } from "./cropper";
+import { loadImageFromBlob } from "./pose";
 import { CONFIDENCE_THRESHOLD } from "./preprocessConfig";
 import type {
   BodyCompRowIn,
@@ -43,6 +43,8 @@ export interface StoredPhoto {
   session_type: SessionType;
   compos_id: number;
   original_filename: string;
+  width: number;
+  height: number;
   rotation_deg: number;
   crop_box: CropBox;
   classification_confidence: number;
@@ -112,6 +114,8 @@ export function photoToOut(record: StoredPhoto, duplicate: boolean): PhotoOut {
     photo_id: record.photo_id,
     session_type: record.session_type,
     original_filename: record.original_filename,
+    width: record.width,
+    height: record.height,
     compos_id: record.compos_id,
     compos_label: record.compos_id > 0 ? labelFor(record.compos_id) : "미분류",
     classification_confidence: record.classification_confidence,
@@ -219,15 +223,26 @@ export async function uploadPhotos(
     await db.put("sessions", session);
   }
 
+  // 이미지 크기(width/height)는 크롭 화면에서 "두 사진 크기가 같으면 크롭도 동일하게 맞추기"
+  // 판단에 쓴다 - 디코딩이 느려서(IndexedDB 트랜잭션을 깨뜨림) 트랜잭션 시작 전에 미리 구한다.
+  const sizes = await Promise.all(
+    files.map(async (f) => {
+      const img = await loadImageFromBlob(f);
+      return { width: img.naturalWidth, height: img.naturalHeight };
+    }),
+  );
+
   const tx = db.transaction("photos", "readwrite");
   const created: StoredPhoto[] = [];
-  for (const f of files) {
+  files.forEach((f, i) => {
     const record: StoredPhoto = {
       photo_id: randomId(10),
       session_id: sessionId,
       session_type: sessionType,
       compos_id: 0,
       original_filename: f.name,
+      width: sizes[i].width,
+      height: sizes[i].height,
       rotation_deg: 0,
       crop_box: [0, 0, 0, 0],
       classification_confidence: 0,
@@ -236,10 +251,9 @@ export async function uploadPhotos(
       pose_error: false,
       blob: f,
     };
-    await tx.store.put(record);
     created.push(record);
-  }
-  await tx.done;
+  });
+  await Promise.all([...created.map((record) => tx.store.put(record)), tx.done]);
 
   const all = await getPhotosRaw(sessionId);
   const dup = duplicatePhotoIds(all);
@@ -273,11 +287,11 @@ export async function putPhotoRaw(record: StoredPhoto): Promise<void> {
   await db.put("photos", record);
 }
 
-/** backend/api/routes/crop.py의 patch_photo와 동일한 규칙. compos_id만 바뀌고 crop_box가
- * 같이 오지 않으면 새 구도 기준으로 크롭을 다시 제안한다(포즈 미검출이면 pose_error만 세우고
- * crop_box는 손대지 않음 - 생성 시점에 안전한 기본값으로 대체됨). manually_confirmed는 실제
- * 회전/크롭이 바뀔 때만 자동으로 켜진다(오늘 세션에서 고친 버그: 구도/세션타입만 바꿔도
- * 크롭 확정으로 잘못 넘어가던 문제) - option_confirmed와는 완전히 별개 필드. */
+/** backend/api/routes/crop.py의 patch_photo와 대응 (자동 크롭 제안 부분은 사용자 요청으로
+ * 제거 - compos_id만 바뀌고 crop_box가 같이 오지 않으면 항상 "이미지 전체를 구도 비율로
+ * 중앙 크롭"한 기본값을 쓴다). manually_confirmed는 실제 회전/크롭이 바뀔 때만 자동으로
+ * 켜진다(구도/세션타입만 바꿔도 크롭 확정으로 잘못 넘어가던 버그의 수정) - option_confirmed와는
+ * 완전히 별개 필드. */
 export async function patchPhoto(sessionId: string, photoId: string, patch: PhotoPatchRequest): Promise<StoredPhoto> {
   const db = await getDb();
   const record = await db.get("photos", photoId);
@@ -290,17 +304,8 @@ export async function patchPhoto(sessionId: string, photoId: string, patch: Phot
     record.classification_confidence = 1.0;
 
     if (patch.crop_box === undefined) {
-      // 회전은 항상 사람이 슬라이더로 직접 조절한다는 원칙 - 여기서는 자동으로 건드리지 않고
-      // 현재 rotation_deg 기준으로만 크롭을 다시 제안한다 (backend crop.py와 동일).
-      try {
-        const landmarks = await detectLandmarks(record.blob);
-        const img = await loadImageFromBlob(record.blob);
-        record.crop_box = proposeCropBox(img, landmarks, record.rotation_deg, record.compos_id);
-        record.pose_error = false;
-      } catch (e) {
-        if (e instanceof PoseNotDetectedError) record.pose_error = true;
-        else throw e;
-      }
+      const img = await loadImageFromBlob(record.blob);
+      record.crop_box = defaultCropBoxForImage(img, record.compos_id);
     }
   }
 

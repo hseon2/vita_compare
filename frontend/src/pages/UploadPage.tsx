@@ -186,55 +186,62 @@ export function UploadPage() {
   // 감싸주므로, 이 컴포넌트 자체는 폭 제한이나 제목을 따로 두지 않고 다른 위저드 화면들과
   // 완전히 같은 모양으로 렌더한다.
   return (
-    <div className="flex flex-col gap-4 py-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-neutral-500">환자 정보를 입력하고 촬영 사진을 업로드하세요.</p>
+    <div className="flex flex-col gap-5 py-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col gap-1.5">
+          <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700">
+            <span className="h-1.5 w-1.5 rounded-full bg-brand-500" />
+            완전 로컬 처리 · AI 자동 분류
+          </span>
+          <p className="text-sm text-neutral-500">환자 정보를 입력하고 촬영 사진을 업로드하세요.</p>
+        </div>
         <button
           type="button"
           onClick={handleReset}
-          className="shrink-0 rounded-xl border border-neutral-300 px-2.5 py-1 text-xs font-medium text-neutral-500 hover:bg-neutral-50 hover:text-neutral-700"
+          className="shrink-0 rounded-xl border border-neutral-200 px-2.5 py-1 text-xs font-medium text-neutral-500 hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-700"
         >
           초기화
         </button>
       </div>
 
       {error && (
-        <div className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>
+        <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
       )}
 
       {lastSessionId && (
         <button
           type="button"
           onClick={() => navigate(`/s/${lastSessionId}/upload`)}
-          className="w-full rounded-xl border border-dashed border-neutral-300 px-4 py-3 text-left text-sm text-neutral-600 hover:bg-neutral-50"
+          className="flex w-full items-center justify-between rounded-2xl border border-brand-200 bg-brand-50/60 px-4 py-3 text-left text-sm font-medium text-brand-800 transition-colors hover:border-brand-300 hover:bg-brand-50"
         >
-          이전 작업 이어하기 →
+          이전 작업 이어하기
+          <span aria-hidden>→</span>
         </button>
       )}
 
-      <div className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium text-neutral-700">환자명</span>
+      <div className="flex flex-col gap-4 rounded-2xl border border-neutral-200 bg-white p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_1px_3px_rgba(16,24,40,0.06)]">
+        <label className="flex flex-col gap-1.5 text-sm">
+          <span className="font-semibold text-neutral-800">환자명</span>
           <input
-            className="rounded border border-neutral-300 px-3 py-2 text-lg font-semibold"
+            className="rounded-xl border border-neutral-200 px-3.5 py-2.5 text-lg font-semibold text-neutral-900 outline-none transition-shadow focus:border-brand-400 focus:ring-4 focus:ring-brand-100"
             value={patientName}
             onChange={(e) => handleNameChange(e.target.value)}
             placeholder="예: 홍길동"
           />
         </label>
 
-        <div className="flex flex-col gap-1 text-sm">
-          <span className="font-medium text-neutral-700">기간 모드</span>
-          <div className="flex gap-2">
+        <div className="flex flex-col gap-1.5 text-sm">
+          <span className="font-semibold text-neutral-800">기간 모드</span>
+          <div className="flex gap-2 rounded-xl bg-neutral-50 p-1">
             {(["standard", "long"] as Mode[]).map((m) => (
               <button
                 key={m}
                 type="button"
                 onClick={() => handleModeChange(m)}
-                className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium ${
+                className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                   mode === m
-                    ? "border-brand-700 bg-brand-700 text-white"
-                    : "border-neutral-300 text-neutral-600"
+                    ? "bg-brand-700 text-white shadow-sm"
+                    : "text-neutral-600 hover:bg-white hover:text-neutral-800"
                 }`}
               >
                 {m === "standard" ? "표준 (시작일/종료일)" : "장기 (시작일/중간일/종료일)"}
@@ -286,7 +293,7 @@ export function UploadPage() {
         type="button"
         disabled={!sessionId || !photosQuery.data?.photos.length}
         onClick={goNext}
-        className="mt-2 self-end rounded-xl bg-brand-700 px-5 py-2.5 font-medium text-white shadow-sm transition-colors hover:bg-brand-800 disabled:opacity-50"
+        className="mt-2 self-end rounded-xl bg-brand-700 px-5 py-2.5 font-medium text-white shadow-sm transition-all hover:bg-brand-800 hover:shadow-md disabled:opacity-50 disabled:shadow-none"
       >
         다음: 옵션 선택 →
       </button>

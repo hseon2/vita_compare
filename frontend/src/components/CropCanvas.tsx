@@ -11,6 +11,9 @@ interface CropCanvasProps {
   rotationDeg: number; // 부모가 소유하는 현재(커밋 전 포함) 회전각
   cropBox: CropBox; // 부모가 소유하는 현재 크롭박스 (회전캔버스 픽셀 기준)
   guideOverlayVisible: boolean;
+  /** 지정하면 크롭 박스 가로세로 비율이 이 값(w/h)으로 고정된다 - react-image-crop이 모서리
+   * 핸들만 남기고 변(가장자리) 핸들은 숨겨서, 비율이 깨지는 조작 자체가 안 되게 막는다. */
+  lockedAspect?: number;
   /** 초기 시드/회전에 따른 내부 재조정 등 "부모 상태 동기화"용 - 다른 사진에 전파하면 안 됨 */
   onBoxChange: (box: CropBox) => void;
   /** 사용자가 실제로 드래그해서 크기/위치를 바꿨을 때만 호출 - 전-후 사이즈 동기화 트리거용 */
@@ -22,6 +25,7 @@ export function CropCanvas({
   rotationDeg,
   cropBox,
   guideOverlayVisible,
+  lockedAspect,
   onBoxChange,
   onUserResize,
 }: CropCanvasProps) {
@@ -142,6 +146,7 @@ export function CropCanvas({
           zoom={zoom}
           setZoom={setZoom}
           guideOverlayVisible={guideOverlayVisible}
+          lockedAspect={lockedAspect}
           setDisplayCrop={setDisplayCrop}
           onBoxChange={onBoxChange}
           onUserResize={onUserResize}
@@ -160,6 +165,7 @@ interface CropCanvasInnerProps {
   zoom: number;
   setZoom: (updater: (z: number) => number) => void;
   guideOverlayVisible: boolean;
+  lockedAspect?: number;
   setDisplayCrop: (c: PixelCrop) => void;
   onBoxChange: (box: CropBox) => void;
   onUserResize?: (box: CropBox) => void;
@@ -177,6 +183,7 @@ function CropCanvasInner({
   zoom,
   setZoom,
   guideOverlayVisible,
+  lockedAspect,
   setDisplayCrop,
   onBoxChange,
   onUserResize,
@@ -224,12 +231,13 @@ function CropCanvasInner({
         )}
       </div>
       <div
-        className="relative overflow-auto rounded-lg bg-neutral-50 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="relative mx-auto overflow-auto rounded-lg bg-neutral-50 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         style={{ width: baseWidth, maxWidth: "100%", height: baseHeight }}
       >
         <div className="relative" style={{ width: displayedWidth, height: displayedHeight }}>
           <ReactCrop
             crop={displayCrop}
+            aspect={lockedAspect}
             onChange={(c) => setDisplayCrop(c)}
             onComplete={(c) => {
               const box = displayedToNaturalBox(c, displayedWidth, rotatedSize.width);

@@ -29,20 +29,17 @@ export const STEP_ORDER: Array<{ step: WizardStep; label: string; path: string }
 ];
 
 interface PhotoLike {
-  photo_id: string;
   manually_confirmed: boolean;
 }
 
 /** 같은 자리(세션타입+구도)에 사진이 여러 장(중복) 배정된 경우 어떤 걸 "그" 사진으로 볼지
  * 정하는 공통 규칙 - 크롭 화면(사용자가 직접 확인/수정)·매칭 확인·PPT 생성이 전부 이 규칙으로
  * 통일돼야 사용자가 크롭 화면에서 고른 사진이 실제로 최종 결과물에 쓰인다. 이미 확인된
- * (manually_confirmed) 사진을 최우선으로, 그다음은 먼저 생성된 photo_id(업로드 순서) 순.
- */
+ * (manually_confirmed) 사진을 최우선으로, 그 외엔 원래 순서(=업로드 순서, 입력 배열이 이미
+ * 그 순서라고 가정)를 그대로 유지한다 - Array.sort는 안정 정렬이라 동점끼리는 순서가 안
+ * 바뀐다. photo_id는 무작위 문자열이라 정렬 기준으로 쓰면 안 된다. */
 export function sortPhotoCandidates<T extends PhotoLike>(candidates: T[]): T[] {
-  return [...candidates].sort((a, b) => {
-    if (a.manually_confirmed !== b.manually_confirmed) return a.manually_confirmed ? -1 : 1;
-    return a.photo_id < b.photo_id ? -1 : a.photo_id > b.photo_id ? 1 : 0;
-  });
+  return [...candidates].sort((a, b) => (a.manually_confirmed === b.manually_confirmed ? 0 : a.manually_confirmed ? -1 : 1));
 }
 
 export function pickPrimaryPhoto<T extends PhotoLike>(candidates: T[]): T | undefined {

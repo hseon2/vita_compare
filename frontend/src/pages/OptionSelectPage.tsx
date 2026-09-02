@@ -6,6 +6,7 @@ import { getGuideImageUrl, sideForSessionType } from "../config/guideImages";
 import { SESSION_TYPE_LABEL } from "../config/sessionTypes";
 import { useClassifyPhotos } from "../hooks/useClassifyPhotos";
 import { useDeletePhoto } from "../hooks/useDeletePhoto";
+import { useMovePhoto } from "../hooks/useMovePhoto";
 import { usePatchPhoto } from "../hooks/usePatchPhoto";
 import { usePhotos } from "../hooks/usePhotos";
 import { useUploadPhotos } from "../hooks/useUploadPhotos";
@@ -22,6 +23,7 @@ export function OptionSelectPage() {
   const patchPhoto = usePatchPhoto(sessionId!);
   const classifyPhotos = useClassifyPhotos(sessionId!);
   const deletePhoto = useDeletePhoto(sessionId!);
+  const movePhoto = useMovePhoto(sessionId!);
   const uploadPhotos = useUploadPhotos(sessionId!);
   const addFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -49,6 +51,7 @@ export function OptionSelectPage() {
     [allPhotos, passOrder],
   );
 
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [viewIndex, setViewIndex] = useState<number | null>(null);
   useEffect(() => {
     if (viewIndex === null && reviewQueue.length > 0) {
@@ -127,12 +130,20 @@ export function OptionSelectPage() {
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
-    // 옵션 클릭 시점에 이미 저장됐지만, 아무것도 안 바꾸고(AI 추천값 그대로) 바로 "다음"을
-    // 누르는 경우를 위해 여기서도 한 번 더 저장한다(이미 같은 값이면 그대로 덮어써도 무해함).
-    await patchPhoto.mutateAsync({
-      photoId: currentPhoto.photo_id,
-      patch: { session_type: editSessionType, compos_id: editComposId, option_confirmed: true },
-    });
+    setSaveError(null);
+    try {
+      // 옵션 클릭 시점에 이미 저장됐지만, 아무것도 안 바꾸고(AI 추천값 그대로) 바로 "다음"을
+      // 누르는 경우를 위해 여기서도 한 번 더 저장한다(이미 같은 값이면 그대로 덮어써도 무해함).
+      await patchPhoto.mutateAsync({
+        photoId: currentPhoto.photo_id,
+        patch: { session_type: editSessionType, compos_id: editComposId, option_confirmed: true },
+      });
+    } catch (e) {
+      // 예전엔 여기서 저장이 실패하면(예: 특이한 이미지 포맷) 그냥 아무 일도 안 일어나서
+      // "다음 버튼이 안 눌린다"처럼 보였다(실사용 중 발견) - 이제는 이유를 화면에 보여준다.
+      setSaveError(e instanceof Error ? e.message : "저장에 실패했습니다. 다시 시도해주세요.");
+      return;
+    }
     if (isLastPhoto) {
       navigate(`/s/${sessionId}/crop`);
     } else {
@@ -141,12 +152,14 @@ export function OptionSelectPage() {
   }
 
   function handlePrev() {
+    setSaveError(null);
     setViewIndex((i) => (i === null ? null : Math.max(0, i - 1)));
   }
 
   // 갤러리 썸네일을 클릭해 바로 그 사진으로 이동한다. 옵션 변경은 이제 클릭 즉시 저장되므로
   // 이동 자체도 별도 확인 없이 안전하다.
   function jumpTo(photoId: string) {
+    setSaveError(null);
     const idx = reviewQueue.findIndex((p) => p.photo_id === photoId);
     if (idx !== -1) setViewIndex(idx);
   }
@@ -240,6 +253,31 @@ export function OptionSelectPage() {
               >
                 ✕
               </button>
+              {/* 촬영일 자동 정렬이 실제 순서와 어긋날 때 사람이 직접 순서를 바로잡을 수 있게 한다. */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  movePhoto.mutate({ photoId: p.photo_id, direction: "prev" });
+                }}
+                disabled={passPhotos[0]?.photo_id === p.photo_id}
+                className="absolute bottom-0.5 left-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/60 text-[10px] leading-none font-bold text-white opacity-0 shadow transition-opacity group-hover:opacity-100 disabled:hidden"
+                aria-label="앞으로 이동"
+              >
+                ‹
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  movePhoto.mutate({ photoId: p.photo_id, direction: "next" });
+                }}
+                disabled={passPhotos[passPhotos.length - 1]?.photo_id === p.photo_id}
+                className="absolute right-0.5 bottom-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/60 text-[10px] leading-none font-bold text-white opacity-0 shadow transition-opacity group-hover:opacity-100 disabled:hidden"
+                aria-label="뒤로 이동"
+              >
+                ›
+              </button>
             </div>
           ))}
           {/* 옵션 선택 화면에서도 바로 사진을 추가할 수 있게 한다 - 업로드 화면으로 돌아가지
@@ -282,7 +320,10 @@ export function OptionSelectPage() {
               alt={currentPhoto.original_filename}
               className="h-full w-full object-contain"
             />
-            {classifyPhotos.isPending && !currentPhoto.option_confirmed && (
+            {/* classifyPhotos.isPending(전체 배치 상태)이 아니라 이 사진 자체가 아직
+                분류되지 않았는지(compos_id 없음)로 판단한다 - 배치가 빨리 끝나버리면 첫 사진
+                말고는 이 안내가 안 뜨는 것처럼 보이는 문제가 있었다. */}
+            {currentPhoto.compos_id <= 0 && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white/70 backdrop-blur-[1px]">
                 <span className="h-6 w-6 animate-spin rounded-full border-[3px] border-neutral-300 border-t-brand-600" />
                 <span className="text-xs font-medium text-neutral-600">AI가 구도를 분석하고 있어요...</span>
@@ -299,6 +340,9 @@ export function OptionSelectPage() {
             />
           </div>
 
+          {saveError && (
+            <p className="rounded-lg bg-red-50 px-2.5 py-2 text-xs text-red-700">{saveError}</p>
+          )}
           <div className="flex items-center justify-between gap-2">
             <button
               type="button"

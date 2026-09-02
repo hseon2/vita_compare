@@ -148,6 +148,11 @@ export const api = {
 
   deletePhoto: (_sessionId: string, photoId: string): Promise<void> => db.deletePhoto(photoId),
 
+  movePhoto: (sessionId: string, photoId: string, direction: "prev" | "next"): Promise<void> =>
+    db.movePhoto(sessionId, photoId, direction),
+
+  reorderPhotos: (_sessionId: string, photoIds: string[]): Promise<void> => db.reorderPhotos(photoIds),
+
   getBodyComp: (sessionId: string): Promise<{ rows: BodyCompRowIn[] }> => db.getBodyComp(sessionId),
 
   saveBodyComp: async (sessionId: string, rows: BodyCompRowIn[]): Promise<{ ok: true }> => {

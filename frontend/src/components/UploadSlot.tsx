@@ -13,6 +13,8 @@ interface UploadSlotProps {
   onOpenLightbox?: (photo: PhotoOut) => void;
   /** 다른 섹션에서 드래그해온 사진을 이 세션타입으로 옮긴다 - 있으면 카드도 드래그 가능해진다 */
   onMovePhoto?: (photoId: string, targetSessionType: SessionType) => void;
+  /** 같은 세션타입 안에서 사진을 드래그해 순서를 바꿨을 때, 바뀐 전체 순서(photo_id 배열)를 넘긴다 */
+  onReorder?: (orderedPhotoIds: string[]) => void;
 }
 
 export function UploadSlot({
@@ -25,10 +27,15 @@ export function UploadSlot({
   onDeletePhoto,
   onOpenLightbox,
   onMovePhoto,
+  onReorder,
 }: UploadSlotProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
-  const dragEnabled = !!onMovePhoto;
+  const [dragOverPhotoId, setDragOverPhotoId] = useState<string | null>(null);
+  // 놓았을 때 이 사진의 왼쪽/오른쪽 중 어디에 끼워질지 - 드래그 중 마우스 위치로 계속 갱신하고,
+  // 그 자리에 세로선으로 미리 보여준다(어디에 놓일지 몰라 답답하다는 피드백 반영).
+  const [dragOverSide, setDragOverSide] = useState<"before" | "after" | null>(null);
+  const dragEnabled = !!onMovePhoto || !!onReorder;
 
   return (
     <div
@@ -49,8 +56,11 @@ export function UploadSlot({
           ? (e) => {
               e.preventDefault();
               setIsDragOver(false);
+              // 사진 위가 아니라 카드의 빈 공간에 놓은 경우 - 다른 슬롯에서 온 사진이면 이
+              // 세션타입으로 옮기고(맨 끝에 붙음), 같은 슬롯 사진이면 아무 것도 안 한다(이미
+              // 여기 있으므로).
               const photoId = e.dataTransfer.getData("text/plain");
-              if (photoId) onMovePhoto!(photoId, sessionType);
+              if (photoId && !photos.some((p) => p.photo_id === photoId)) onMovePhoto?.(photoId, sessionType);
             }
           : undefined
       }
@@ -97,7 +107,7 @@ export function UploadSlot({
 
       {photos.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1.5">
-          {photos.map((photo) => (
+          {photos.map((photo, idx) => (
             <div
               key={photo.photo_id}
               draggable={dragEnabled}
@@ -109,7 +119,57 @@ export function UploadSlot({
                     }
                   : undefined
               }
-              className={`group relative h-14 w-14 shrink-0 overflow-hidden rounded border border-neutral-200 ${
+              onDragOver={
+                dragEnabled
+                  ? (e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const side = e.clientX - rect.left < rect.width / 2 ? "before" : "after";
+                      setDragOverPhotoId(photo.photo_id);
+                      setDragOverSide(side);
+                    }
+                  : undefined
+              }
+              onDragLeave={
+                dragEnabled
+                  ? () =>
+                      setDragOverPhotoId((id) => {
+                        if (id !== photo.photo_id) return id;
+                        setDragOverSide(null);
+                        return null;
+                      })
+                  : undefined
+              }
+              onDrop={
+                dragEnabled
+                  ? (e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const side = dragOverSide;
+                      setDragOverPhotoId(null);
+                      setDragOverSide(null);
+                      setIsDragOver(false);
+                      const draggedId = e.dataTransfer.getData("text/plain");
+                      if (!draggedId || draggedId === photo.photo_id) return;
+                      const draggedIdx = photos.findIndex((p) => p.photo_id === draggedId);
+                      if (draggedIdx === -1) {
+                        // 다른 세션타입에서 드래그해온 사진 - 이 사진 자리로 옮겨 넣는다.
+                        onMovePhoto?.(draggedId, sessionType);
+                        return;
+                      }
+                      // 같은 슬롯 안 - 놓은 사진의 왼쪽/오른쪽(세로선 표시된 쪽)으로 순서를 옮긴다.
+                      if (!onReorder) return;
+                      const order = photos.map((p) => p.photo_id);
+                      order.splice(draggedIdx, 1);
+                      let insertAt = side === "after" ? idx + 1 : idx;
+                      if (draggedIdx < insertAt) insertAt -= 1;
+                      order.splice(insertAt, 0, draggedId);
+                      onReorder(order);
+                    }
+                  : undefined
+              }
+              className={`group relative h-14 w-14 shrink-0 overflow-hidden rounded border-2 border-neutral-200 transition-colors ${
                 dragEnabled ? "cursor-grab active:cursor-grabbing" : ""
               }`}
             >
@@ -119,6 +179,13 @@ export function UploadSlot({
                 onClick={onOpenLightbox ? () => onOpenLightbox(photo) : undefined}
                 className={`h-full w-full object-cover ${onOpenLightbox ? "cursor-pointer" : ""}`}
               />
+              {dragOverPhotoId === photo.photo_id && dragOverSide && (
+                <div
+                  className={`pointer-events-none absolute top-0 z-10 h-full w-[3px] rounded-full bg-brand-600 ${
+                    dragOverSide === "before" ? "left-0" : "right-0"
+                  }`}
+                />
+              )}
               {onDeletePhoto && (
                 <button
                   type="button"

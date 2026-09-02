@@ -43,6 +43,9 @@ export interface PhotoOut {
   crop_box: CropBox; // [0,0,0,0] = 아직 AI 크롭 전
   thumbnail_url: string;
   duplicate: boolean;
+  // PPT 슬라이드에 실제로 들어갈 크기 배율(1.0 = 화면에 꽉 차게 자동 맞춤, 작을수록 슬라이드
+  // 안에서 작게 표시됨) - 백엔드 스키마엔 없는 프론트 전용 필드.
+  slide_scale: number;
 }
 
 export interface PhotosGroupedResponse {
@@ -69,6 +72,7 @@ export interface PhotoPatchRequest {
   manually_confirmed?: boolean;
   option_confirmed?: boolean;
   sync_size?: boolean; // 서버 기본값 true
+  slide_scale?: number;
 }
 
 export interface BodyCompRowIn {

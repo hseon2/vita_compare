@@ -28,6 +28,24 @@ export function resizeBoxKeepingCenter(box: CropBox, targetW: number, targetH: n
   ];
 }
 
+/** box의 중심과 "크기"(면적)는 그대로 둔 채 가로세로 비율만 targetRatio(w/h)에 맞춘다 - 크롭
+ * 화면의 "비율 고정"에 쓴다: 두 사진의 크롭 박스가 서로 다른 크기(면적)를 유지하면서도(각자
+ * 원본 배율이 다를 수 있으므로) 같은 가로세로 비율을 갖게 만든다. */
+export function applyRatioKeepingArea(box: CropBox, targetRatio: number): CropBox {
+  const [x0, y0, x1, y1] = box;
+  const cx = (x0 + x1) / 2;
+  const cy = (y0 + y1) / 2;
+  const area = (x1 - x0) * (y1 - y0);
+  const newW = Math.sqrt(area * targetRatio);
+  const newH = Math.sqrt(area / targetRatio);
+  return [
+    Math.round(cx - newW / 2),
+    Math.round(cy - newH / 2),
+    Math.round(cx + newW / 2),
+    Math.round(cy + newH / 2),
+  ];
+}
+
 /** 크롭박스가 이미지(회전 캔버스) 바깥으로 나가지 않게 위치/크기를 보정한다. 전-후 동기화
  * (resizeBoxKeepingCenter)나 회전 시 재스케일 과정에서 박스가 경계 밖으로 밀려날 수 있어,
  * 표시 직전에 항상 이 함수를 거쳐 사진 범위 안으로 잘라낸다. */

@@ -10,12 +10,14 @@ import { usePatchPhoto } from "../hooks/usePatchPhoto";
 import { usePhotos } from "../hooks/usePhotos";
 import { useWizardStore } from "../store/wizardStore";
 import { deriveModeFromPhotos, getSetPairing, sortPhotoCandidates } from "../utils/derive";
-import { resizeBoxKeepingCenter } from "../utils/cropCoords";
+import { applyRatioKeepingArea } from "../utils/cropCoords";
 import type { CropBox, PhotoOut, SessionType } from "../api/types";
 
 interface EditState {
   rotationDeg: number;
   cropBox: CropBox;
+  // PPT 슬라이드 안에서 이 사진이 표시될 크기 배율 (1.0 = 화면 꽉 차게 자동 맞춤).
+  slideScale: number;
 }
 
 interface CropUnit {
@@ -62,6 +64,9 @@ export function CropAdjustPage() {
     return units;
   }, [allPhotos, mode]);
 
+  // 상/하로 보기 - 좌우로 나란히 두면 사진이 좁아서 잘 안 보인다는 피드백 반영. 쌍을 넘겨도
+  // 유지되는 화면 설정이라 유닛 인덱스와 달리 리셋하지 않는다.
+  const [stackedLayout, setStackedLayout] = useState(false);
   const [unitIndex, setUnitIndex] = useState<number | null>(null);
   useEffect(() => {
     if (unitIndex === null && cropUnits.length > 0) {
@@ -80,9 +85,15 @@ export function CropAdjustPage() {
   // 중복 후보 중 지금 화면에 보여줄 사진의 인덱스 - 유닛이 바뀌면 각각 0(=대표 사진)으로 되돌린다.
   const [beforeIdx, setBeforeIdx] = useState(0);
   const [afterIdx, setAfterIdx] = useState(0);
+  // 가로세로 비율 고정 - 기본은 꺼짐(양쪽이 서로 다른 배율로 찍혔을 때 한쪽만 미세조정하기
+  // 힘들다는 피드백 반영, 예전엔 항상 픽셀 크기까지 강제로 맞췄다). before/after 중 한쪽에서
+  // "비율 고정"을 누르면 그 순간 그쪽의 가로세로 비율을 반대쪽에도 즉시 맞추고, 그 뒤로는
+  // 어느 쪽을 조절하든 이 비율을 유지한다(크기·면적은 각자 자유롭게 조절 가능 - 비율만 같다).
+  const [lockedRatio, setLockedRatio] = useState<number | null>(null);
   useEffect(() => {
     setBeforeIdx(0);
     setAfterIdx(0);
+    setLockedRatio(null);
   }, [unitIndex]);
 
   const beforePhoto = currentUnit?.beforeCandidates[beforeIdx] ?? null;
@@ -99,30 +110,59 @@ export function CropAdjustPage() {
     setEdits((prev) => {
       const next = { ...prev };
       for (const p of currentPhotos) {
-        if (!next[p.photo_id]) next[p.photo_id] = { rotationDeg: p.rotation_deg, cropBox: p.crop_box };
+        if (!next[p.photo_id]) {
+          next[p.photo_id] = { rotationDeg: p.rotation_deg, cropBox: p.crop_box, slideScale: p.slide_scale ?? 1 };
+        }
       }
       return next;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unitIndex, beforeIdx, afterIdx]);
 
+  // side 쪽 버튼을 눌렀을 때: 이미 그 비율로 고정돼 있으면 해제하고, 아니면 지금 side의
+  // 가로세로 비율을 반대쪽에도 즉시 맞춘 뒤 그 비율로 고정한다.
+  function toggleRatioLock(side: "before" | "after") {
+    const sourcePhoto = side === "before" ? beforePhoto : afterPhoto;
+    const otherPhoto = side === "before" ? afterPhoto : beforePhoto;
+    if (!sourcePhoto) return;
+    const sourceBox = edits[sourcePhoto.photo_id]?.cropBox;
+    if (!sourceBox) return;
+    const sw = sourceBox[2] - sourceBox[0];
+    const sh = sourceBox[3] - sourceBox[1];
+    if (sh <= 0) return;
+    const ratio = sw / sh;
+
+    setLockedRatio((current) => (current !== null && Math.abs(current - ratio) < 0.001 ? null : ratio));
+    if (otherPhoto) {
+      setEdits((prev) => {
+        const ob = prev[otherPhoto.photo_id]?.cropBox;
+        if (!ob) return prev;
+        return {
+          ...prev,
+          [otherPhoto.photo_id]: { ...prev[otherPhoto.photo_id], cropBox: applyRatioKeepingArea(ob, ratio) },
+        };
+      });
+    }
+  }
+
   function handleBoxChange(photoId: string, box: CropBox) {
     setEdits((prev) => (prev[photoId] ? { ...prev, [photoId]: { ...prev[photoId], cropBox: box } } : prev));
   }
 
-  // 사용자가 실제로 드래그해서 크기를 바꿨을 때 같은 유닛의 다른 사진에도 그대로(픽셀 크기까지)
-  // 반영한다 - 원본 이미지 크기가 다르더라도 비율만 맞추면 실제 크기가 달라 보인다는 피드백 반영.
+  // 비율이 고정돼 있을 때만 동작한다 - 꺼져 있으면 각자 독립적으로 크기(면적)와 모양 둘 다
+  // 자유롭게 조절 가능(예전엔 항상 픽셀 크기까지 강제로 맞춰서, 두 사진의 촬영 배율이 다르면
+  // 한쪽만 미세조정하기 어렵다는 피드백이 있었다). 켜져 있으면 드래그한 쪽 자신도, 반대쪽도
+  // 각자의 면적(크기)은 유지한 채 모양(가로세로 비율)만 고정된 비율에 맞춘다.
   function handleUserResize(photoId: string, box: CropBox) {
-    const w = box[2] - box[0];
-    const h = box[3] - box[1];
+    if (lockedRatio === null || !beforePhoto || !afterPhoto) return;
+    const isBefore = photoId === beforePhoto.photo_id;
+    const otherPhoto = isBefore ? afterPhoto : beforePhoto;
     setEdits((prev) => {
       const next = { ...prev };
-      for (const p of currentPhotos) {
-        if (p.photo_id === photoId || !next[p.photo_id]) continue;
-        next[p.photo_id] = {
-          ...next[p.photo_id],
-          cropBox: resizeBoxKeepingCenter(next[p.photo_id].cropBox, w, h),
-        };
+      next[photoId] = { ...next[photoId], cropBox: applyRatioKeepingArea(box, lockedRatio) };
+      const ob = next[otherPhoto.photo_id]?.cropBox;
+      if (ob) {
+        next[otherPhoto.photo_id] = { ...next[otherPhoto.photo_id], cropBox: applyRatioKeepingArea(ob, lockedRatio) };
       }
       return next;
     });
@@ -130,6 +170,20 @@ export function CropAdjustPage() {
 
   function handleRotationChange(photoId: string, deg: number) {
     setEdits((prev) => (prev[photoId] ? { ...prev, [photoId]: { ...prev[photoId], rotationDeg: deg } } : prev));
+  }
+
+  // 기본은 양쪽 크기가 같아야 하므로 슬라이더 하나로 시작일/종료일 둘 다 같이 조절한다.
+  function handleSlideScaleChange(scale: number) {
+    setEdits((prev) => {
+      const next = { ...prev };
+      if (beforePhoto && next[beforePhoto.photo_id]) {
+        next[beforePhoto.photo_id] = { ...next[beforePhoto.photo_id], slideScale: scale };
+      }
+      if (afterPhoto && next[afterPhoto.photo_id]) {
+        next[afterPhoto.photo_id] = { ...next[afterPhoto.photo_id], slideScale: scale };
+      }
+      return next;
+    });
   }
 
   if (photosQuery.isLoading) return <p className="py-8 text-sm text-neutral-400">불러오는 중...</p>;
@@ -157,7 +211,13 @@ export function CropAdjustPage() {
       // 같은 구도의 다른 사진 crop_box를 픽셀 크기까지 통일해버리지 않게 막는다.
       await patchPhoto.mutateAsync({
         photoId: p.photo_id,
-        patch: { rotation_deg: edit.rotationDeg, crop_box: edit.cropBox, manually_confirmed: true, sync_size: false },
+        patch: {
+          rotation_deg: edit.rotationDeg,
+          crop_box: edit.cropBox,
+          manually_confirmed: true,
+          sync_size: false,
+          slide_scale: edit.slideScale,
+        },
       });
     }
     if (isLastUnit) {
@@ -184,9 +244,20 @@ export function CropAdjustPage() {
           {confirmedUnitCount} / {cropUnits.length}쌍 확인 완료
           <span className="ml-2 text-neutral-400">(현재 {unitIndex! + 1} / {cropUnits.length})</span>
         </p>
-        <button type="button" onClick={toggleGuideOverlay} className="text-xs text-neutral-500 underline">
-          가이드 오버레이 {guideOverlayVisible ? "숨기기" : "보이기"}
-        </button>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-1.5 text-sm font-semibold text-neutral-700">
+            <input
+              type="checkbox"
+              checked={stackedLayout}
+              onChange={(e) => setStackedLayout(e.target.checked)}
+              className="h-4 w-4 rounded border-neutral-300 accent-brand-600"
+            />
+            상/하로 보기
+          </label>
+          <button type="button" onClick={toggleGuideOverlay} className="text-xs text-neutral-500 underline">
+            가이드 오버레이 {guideOverlayVisible ? "숨기기" : "보이기"}
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-1 rounded-xl bg-neutral-50 p-1">
@@ -232,6 +303,47 @@ export function CropAdjustPage() {
               afterEdit={afterPhoto ? (edits[afterPhoto.photo_id] ?? null) : null}
               wide={WIDE_COMPOS.has(currentUnit.composId)}
             />
+            {/* PPT에 실제로 들어갈 이미지 크기 - 자동으로 꽉 채운 크기(100%)에서 이 배율만큼
+                줄인다. 기본은 양쪽이 같은 크기여야 하므로 버튼 하나로 시작일/종료일을 같이
+                조절하고, 위 미리보기로 결과를 바로 확인한다. 아래 회전 슬라이더(수평 보정
+                각도)와 생김새가 헷갈린다는 피드백이 있어, 같은 range 슬라이더 대신 확대/축소
+                버튼과 같은 +/− 스텝 컨트롤 형태로 만들었다. */}
+            {(beforePhoto || afterPhoto) && (
+              <div className="flex items-center gap-2 border-t border-neutral-100 pt-2 text-[11px] text-neutral-500">
+                <span>PPT 이미지 크기 조정</span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleSlideScaleChange(
+                        Math.max(0.4, +((edits[(beforePhoto ?? afterPhoto)!.photo_id]?.slideScale ?? 1) - 0.05).toFixed(2)),
+                      )
+                    }
+                    disabled={(edits[(beforePhoto ?? afterPhoto)!.photo_id]?.slideScale ?? 1) <= 0.4}
+                    className="flex h-6 w-6 items-center justify-center rounded border border-neutral-300 text-sm leading-none text-neutral-600 disabled:opacity-30"
+                    aria-label="이미지 크기 축소"
+                  >
+                    −
+                  </button>
+                  <span className="w-10 text-center tabular-nums">
+                    {Math.round((edits[(beforePhoto ?? afterPhoto)!.photo_id]?.slideScale ?? 1) * 100)}%
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleSlideScaleChange(
+                        Math.min(2, +((edits[(beforePhoto ?? afterPhoto)!.photo_id]?.slideScale ?? 1) + 0.05).toFixed(2)),
+                      )
+                    }
+                    disabled={(edits[(beforePhoto ?? afterPhoto)!.photo_id]?.slideScale ?? 1) >= 2}
+                    className="flex h-6 w-6 items-center justify-center rounded border border-neutral-300 text-sm leading-none text-neutral-600 disabled:opacity-30"
+                    aria-label="이미지 크기 확대"
+                  >
+                    ＋
+                  </button>
+                </div>
+              </div>
+            )}
             {(beforeGuideImg || afterGuideImg) && (
               <div className="grid grid-cols-2 gap-2 border-t border-neutral-100 pt-2">
                 <div className="flex flex-col items-center gap-1">
@@ -251,8 +363,9 @@ export function CropAdjustPage() {
           </div>
         </div>
 
-        {/* 우측: 실제 크롭 조정 - 시작일/종료일 두 장을 나란히 놓는다. */}
-        <div className="grid grid-cols-2 justify-center gap-3 sm:gap-4">
+        {/* 우측: 실제 크롭 조정 - 시작일/종료일 두 장. 상/하로 보기 체크 시 세로로 쌓아서
+            사진 하나하나를 더 크게 볼 수 있게 한다. */}
+        <div className={stackedLayout ? "flex flex-col items-center gap-4" : "grid grid-cols-2 justify-center gap-3 sm:gap-4"}>
           {(
             [
               [currentUnit.beforeType, beforePhoto, currentUnit.beforeCandidates, beforeIdx, setBeforeIdx, "before"],
@@ -302,7 +415,9 @@ export function CropAdjustPage() {
               return (
                 <div
                   key={sessionType}
-                  className="mx-auto flex w-full max-w-[300px] flex-col gap-2 rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 p-3"
+                  className={`mx-auto flex w-full flex-col gap-2 rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 p-3 ${
+                    stackedLayout ? "max-w-[560px]" : "max-w-[380px]"
+                  }`}
                 >
                   {tag}
                   <p className="text-xs text-neutral-400">이 구도엔 이 세션타입 사진이 없습니다.</p>
@@ -314,11 +429,31 @@ export function CropAdjustPage() {
             return (
               <div
                 key={sessionType}
-                className="mx-auto flex w-full max-w-[300px] flex-col gap-1.5 rounded-2xl border border-neutral-200 bg-white p-2 shadow-sm sm:p-3"
+                className={`mx-auto flex w-full flex-col gap-1.5 rounded-2xl border border-neutral-200 bg-white p-2 shadow-sm sm:p-3 ${
+                  stackedLayout ? "max-w-[560px]" : "max-w-[380px]"
+                }`}
               >
                 <div className="flex items-center justify-between gap-1.5">
                   {tag}
                   <div className="flex shrink-0 items-center gap-1.5">
+                    {beforePhoto && afterPhoto && (
+                      <button
+                        type="button"
+                        onClick={() => toggleRatioLock(side)}
+                        title={
+                          lockedRatio !== null
+                            ? "지금 가로세로 비율을 고정했어요. 다시 눌러 해제"
+                            : "지금 이 사진의 가로세로 비율로 반대쪽도 맞춰 고정하려면 누르세요"
+                        }
+                        className={`rounded border px-1.5 py-0.5 text-[11px] font-medium ${
+                          lockedRatio !== null
+                            ? "border-brand-700 bg-brand-700 text-white"
+                            : "border-neutral-300 text-neutral-500 hover:bg-neutral-50"
+                        }`}
+                      >
+                        {lockedRatio !== null ? "🔒 비율 고정 해제" : "🔓 비율 고정"}
+                      </button>
+                    )}
                     {nav}
                     {photo.manually_confirmed && <span className="text-xs text-emerald-600">✓</span>}
                   </div>
@@ -328,6 +463,7 @@ export function CropAdjustPage() {
                   rotationDeg={edit.rotationDeg}
                   cropBox={edit.cropBox}
                   guideOverlayVisible={guideOverlayVisible}
+                  lockedAspect={lockedRatio ?? undefined}
                   onBoxChange={(box) => handleBoxChange(photo.photo_id, box)}
                   onUserResize={(box) => handleUserResize(photo.photo_id, box)}
                 />

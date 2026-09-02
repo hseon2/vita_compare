@@ -25,19 +25,35 @@ export interface PhotoSlideLayout {
   after: PlacedPhoto;
 }
 
+/** 자동으로 맞춘 크기(placed)를 중심은 그대로 둔 채 scale배로 줄인다 - 크롭 화면에서 사용자가
+ * "PPT 이미지 크기"를 줄이면 슬라이드 안에서 제자리에 작게 표시되게 한다(1.0=기존 자동 맞춤). */
+function scaleAroundCenter(p: PlacedPhoto, scale: number): PlacedPhoto {
+  if (scale === 1) return p;
+  const cx = p.x + p.w / 2;
+  const cy = p.y + p.h / 2;
+  const w = p.w * scale;
+  const h = p.h * scale;
+  return { x: cx - w / 2, y: cy - h / 2, w, h };
+}
+
 /** wide=false: 실제 렌더 크기끼리 딱 붙여서 중앙 배치 (박스 안에서 비율유지만 하면 세로형
  * 사진 특성상 양옆 여백이 커져 사진 사이가 떨어져 보임). wide=true(5·15번 팔벌림): 대각선
- * 배치 - 전 사진은 좌측상단, 후 사진은 우측하단. */
+ * 배치 - 전 사진은 좌측상단, 후 사진은 우측하단.
+ * beforeScale/afterScale: 자동으로 꽉 채운 크기에서 각각 이 배율만큼 더 줄인다(기본 1 = 그대로). */
 export function computePhotoSlideLayout(
   beforeSize: { width: number; height: number },
   afterSize: { width: number; height: number },
   wide: boolean,
   showDates: boolean,
+  beforeScale = 1,
+  afterScale = 1,
 ): PhotoSlideLayout {
-  const topMargin = 1.0;
-  const bottomMargin = showDates ? 0.9 : 0.5;
-  const sideMargin = 0.5;
-  const gap = 0.2;
+  // 사진이 더 크게 꽉 차게 들어갔으면 좋겠다는 피드백 반영 - 좌측상단 구도 태그(y 0.2~0.7in)와
+  // 겹치지 않는 선에서 여백을 최대한 줄였다.
+  const topMargin = 0.8;
+  const bottomMargin = showDates ? 0.65 : 0.3;
+  const sideMargin = 0.35;
+  const gap = 0.15;
 
   const availW = SLIDE_W - sideMargin * 2;
   const availH = SLIDE_H - topMargin - bottomMargin;
@@ -48,8 +64,8 @@ export function computePhotoSlideLayout(
     const b = fitBox(beforeSize.width, beforeSize.height, diagBoxW, diagBoxH);
     const a = fitBox(afterSize.width, afterSize.height, diagBoxW, diagBoxH);
     return {
-      before: { x: sideMargin, y: topMargin, ...b },
-      after: { x: sideMargin + availW - a.w, y: topMargin + availH - a.h, ...a },
+      before: scaleAroundCenter({ x: sideMargin, y: topMargin, ...b }, beforeScale),
+      after: scaleAroundCenter({ x: sideMargin + availW - a.w, y: topMargin + availH - a.h, ...a }, afterScale),
     };
   }
 
@@ -68,7 +84,7 @@ export function computePhotoSlideLayout(
   const afterY = topMargin + (availH - a.h) / 2;
 
   return {
-    before: { x: startX, y: beforeY, ...b },
-    after: { x: startX + b.w + gap, y: afterY, ...a },
+    before: scaleAroundCenter({ x: startX, y: beforeY, ...b }, beforeScale),
+    after: scaleAroundCenter({ x: startX + b.w + gap, y: afterY, ...a }, afterScale),
   };
 }

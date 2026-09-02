@@ -45,8 +45,16 @@ export function defaultCropBox(imgW: number, imgH: number, ratioW: number, ratio
 
 /** 편의 함수: 이미지 엘리먼트 + 구도 번호로 기본 크롭박스를 바로 계산. */
 export function defaultCropBoxForImage(img: HTMLImageElement, composId: number): CropBox {
+  return defaultCropBoxForDims(img.naturalWidth, img.naturalHeight, composId);
+}
+
+/** width/height를 이미 알고 있을 때(업로드 시 저장해둔 값 등) 이미지를 다시 디코딩하지 않고
+ * 바로 기본 크롭박스를 계산한다 - 옵션 화면에서 구도만 바꿀 때마다 이미지를 매번 새로
+ * 디코딩하면, HEIC 등 브라우저가 못 읽는 형식의 사진에서 디코딩이 실패해 저장 자체가
+ * 조용히 실패하고 "다음" 버튼이 반응 없는 것처럼 보이는 문제가 있었다. */
+export function defaultCropBoxForDims(imgW: number, imgH: number, composId: number): CropBox {
   const [ratioW, ratioH] = CROP_RATIOS[composId] ?? [3, 4];
-  return defaultCropBox(img.naturalWidth, img.naturalHeight, ratioW, ratioH);
+  return defaultCropBox(imgW, imgH, ratioW, ratioH);
 }
 
 export interface CroppedImage {

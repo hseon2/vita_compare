@@ -7,6 +7,7 @@ import { ImageLightbox } from "../components/ImageLightbox";
 import { UploadSlot } from "../components/UploadSlot";
 import { useDeletePhoto } from "../hooks/useDeletePhoto";
 import { usePatchPhoto } from "../hooks/usePatchPhoto";
+import { useReorderPhotos } from "../hooks/useReorderPhotos";
 import { photosQueryKey, usePhotos } from "../hooks/usePhotos";
 import { sessionMetaQueryKey, useSessionMeta, useUpdateSessionMeta } from "../hooks/useSessionMeta";
 import { useWizardStore } from "../store/wizardStore";
@@ -38,6 +39,7 @@ export function UploadPage() {
   const updateMeta = useUpdateSessionMeta(sessionId ?? "");
   const patchPhoto = usePatchPhoto(sessionId ?? "");
   const deletePhoto = useDeletePhoto(sessionId ?? "");
+  const reorderPhotos = useReorderPhotos(sessionId ?? "");
 
   const [dates, setDates] = useState<Record<SessionType, string>>({ start: TODAY, mid: TODAY, end: TODAY });
   const [uploadingSlot, setUploadingSlot] = useState<SessionType | null>(null);
@@ -157,6 +159,10 @@ export function UploadPage() {
     patchPhoto.mutate({ photoId, patch: { session_type: targetSessionType } });
   }
 
+  function handleReorder(orderedPhotoIds: string[]) {
+    reorderPhotos.mutate(orderedPhotoIds);
+  }
+
   // 입력한 환자명/모드/업로드 진행 상태를 전부 지우고 새 세션을 시작할 수 있게 한다.
   // 서버의 이전 세션 자체를 삭제하지는 않는다(삭제 API가 없음) - 그냥 참조를 놓고 새로 시작.
   function handleReset() {
@@ -270,7 +276,7 @@ export function UploadPage() {
         </div>
       </div>
 
-      <label className="flex items-center gap-2 text-sm text-neutral-600">
+      <label className="flex items-center gap-2 text-sm font-semibold text-neutral-700">
         <input
           type="checkbox"
           checked={!batchMode}
@@ -298,6 +304,7 @@ export function UploadPage() {
             onDeletePhoto={handleDeletePhoto}
             onOpenLightbox={setLightboxPhoto}
             onMovePhoto={handleMovePhoto}
+            onReorder={handleReorder}
           />
         ))}
       </div>

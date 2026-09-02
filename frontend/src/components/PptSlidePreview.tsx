@@ -7,6 +7,7 @@ import type { CropBox, PhotoOut } from "../api/types";
 interface EditState {
   rotationDeg: number;
   cropBox: CropBox;
+  slideScale?: number;
 }
 
 interface PptSlidePreviewProps {
@@ -58,6 +59,8 @@ export function PptSlidePreview({ composId, beforePhoto, afterPhoto, beforeEdit,
     afterCrop ?? { width: 1, height: 1 },
     wide,
     false,
+    beforeEdit?.slideScale ?? 1,
+    afterEdit?.slideScale ?? 1,
   );
 
   return (

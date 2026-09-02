@@ -2,7 +2,7 @@
 // 저장한다 - 사진이 어떤 서버로도 전송되지 않는다. api/client.ts가 이 모듈을 호출한다.
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import { DEFAULT_BODY_COMP_LABELS, labelFor } from "../config/compos";
-import { defaultCropBoxForImage } from "./cropper";
+import { defaultCropBoxForDims } from "./cropper";
 import { loadImageFromBlob } from "./pose";
 import { CONFIDENCE_THRESHOLD } from "./preprocessConfig";
 import type {
@@ -40,6 +40,9 @@ interface StoredSession {
 export interface StoredPhoto {
   photo_id: string;
   session_id: string;
+  // photo_id는 무작위 문자열이라 생성 순서를 반영하지 않는다(정렬용으로 쓰면 안 됨) - 업로드
+  // 순서(=나중에 추가한 사진이 뒤로 가는 것)를 보장하려면 이 값으로 정렬해야 한다.
+  created_at: number;
   session_type: SessionType;
   compos_id: number;
   original_filename: string;
@@ -51,6 +54,8 @@ export interface StoredPhoto {
   manually_confirmed: boolean;
   option_confirmed: boolean;
   pose_error: boolean;
+  // PPT 슬라이드 안에서의 크기 배율(1.0 = 화면 꽉 차게 자동 맞춤) - 크롭 화면에서 조정.
+  slide_scale: number;
   blob: Blob;
 }
 
@@ -127,6 +132,7 @@ export function photoToOut(record: StoredPhoto, duplicate: boolean): PhotoOut {
     crop_box: record.crop_box,
     thumbnail_url: getObjectUrl(record.photo_id, record.blob),
     duplicate,
+    slide_scale: record.slide_scale ?? 1,
   };
 }
 
@@ -238,6 +244,10 @@ export async function uploadPhotos(
     const record: StoredPhoto = {
       photo_id: randomId(10),
       session_id: sessionId,
+      // 업로드한 시각이 아니라 사진이 실제로 찍힌 시각(파일 lastModified) 기준으로 정렬한다 -
+      // groupFilesByDate와 같은 기준. 같은 값이 겹치면(연사 등) 선택한 순서로 안정 정렬되도록
+      // 아주 작은 값을 더한다.
+      created_at: f.lastModified + i * 0.001,
       session_type: sessionType,
       compos_id: 0,
       original_filename: f.name,
@@ -249,6 +259,7 @@ export async function uploadPhotos(
       manually_confirmed: false,
       option_confirmed: false,
       pose_error: false,
+      slide_scale: 1,
       blob: f,
     };
     created.push(record);
@@ -262,7 +273,47 @@ export async function uploadPhotos(
 
 export async function getPhotosRaw(sessionId: string): Promise<StoredPhoto[]> {
   const db = await getDb();
-  return db.getAllFromIndex("photos", "by_session", sessionId);
+  const records = await db.getAllFromIndex("photos", "by_session", sessionId);
+  // IndexedDB 인덱스 순서는 생성 순서를 보장하지 않는다 - 업로드한 순서대로(나중에 추가한
+  // 사진이 뒤로) 보이도록 항상 created_at 기준으로 정렬해서 반환한다.
+  return records.sort((a, b) => (a.created_at ?? 0) - (b.created_at ?? 0));
+}
+
+/** 같은 촬영 시점(session_type) 안에서 사진을 한 칸 앞/뒤로 옮긴다 - 촬영일(파일 시각) 기준
+ * 자동 정렬이 실제 순서와 어긋날 때 사람이 직접 바로잡을 수 있게 한다. 옆 사진과
+ * created_at을 맞바꾸는 방식이라 다른 사진들 순서에는 영향이 없다. */
+export async function movePhoto(sessionId: string, photoId: string, direction: "prev" | "next"): Promise<void> {
+  const all = await getPhotosRaw(sessionId);
+  const record = all.find((p) => p.photo_id === photoId);
+  if (!record) return;
+  const siblings = all.filter((p) => p.session_type === record.session_type);
+  const idx = siblings.findIndex((p) => p.photo_id === photoId);
+  const swapIdx = direction === "prev" ? idx - 1 : idx + 1;
+  if (swapIdx < 0 || swapIdx >= siblings.length) return;
+  const other = siblings[swapIdx];
+  const db = await getDb();
+  const tx = db.transaction("photos", "readwrite");
+  const aCreatedAt = record.created_at;
+  record.created_at = other.created_at;
+  other.created_at = aCreatedAt;
+  await Promise.all([tx.store.put(record), tx.store.put(other), tx.done]);
+}
+
+/** 드래그로 순서를 바꿨을 때 - 주어진 순서대로 created_at을 다시 순차 부여한다(값 자체보다
+ * 상대적 순서만 의미 있음). photoIds는 보통 한 세션타입 안의 전체 목록이지만, 일부만 와도
+ * 그 안에서의 상대 순서만 그대로 반영된다. */
+export async function reorderPhotos(photoIds: string[]): Promise<void> {
+  const db = await getDb();
+  const tx = db.transaction("photos", "readwrite");
+  const baseTime = Date.now();
+  for (let i = 0; i < photoIds.length; i++) {
+    const record = await tx.store.get(photoIds[i]);
+    if (record) {
+      record.created_at = baseTime + i;
+      await tx.store.put(record);
+    }
+  }
+  await tx.done;
 }
 
 export async function getPhotos(sessionId: string): Promise<PhotosGroupedResponse> {
@@ -302,10 +353,16 @@ export async function patchPhoto(sessionId: string, photoId: string, patch: Phot
   if (patch.compos_id !== undefined) {
     record.compos_id = patch.compos_id;
     record.classification_confidence = 1.0;
+    // 포즈 미검출로 AI 분류가 실패했던 사진이라도, 사람이 직접 구도를 골라 확정하면 더 이상
+    // "포즈 미검출" 배지를 보여줄 이유가 없다 - 이 플래그가 안 지워지면 확정 후에도 배지가
+    // 계속 "포즈 미검출"로 남아 저장이 안 된 것처럼 보인다(실사용 중 발견).
+    record.pose_error = false;
 
     if (patch.crop_box === undefined) {
-      const img = await loadImageFromBlob(record.blob);
-      record.crop_box = defaultCropBoxForImage(img, record.compos_id);
+      // 업로드 때 이미 구해둔 width/height로 계산한다(이미지를 다시 디코딩하지 않는다) -
+      // HEIC 등 브라우저가 못 읽는 형식의 사진에서 디코딩이 실패해 저장 자체가 조용히
+      // 실패하고 "다음" 버튼이 반응 없는 것처럼 보이는 문제가 있었다.
+      record.crop_box = defaultCropBoxForDims(record.width, record.height, record.compos_id);
     }
   }
 
@@ -323,6 +380,7 @@ export async function patchPhoto(sessionId: string, photoId: string, patch: Phot
   else if (cropChanged) record.manually_confirmed = true;
 
   if (patch.option_confirmed !== undefined) record.option_confirmed = patch.option_confirmed;
+  if (patch.slide_scale !== undefined) record.slide_scale = patch.slide_scale;
 
   await db.put("photos", record);
 

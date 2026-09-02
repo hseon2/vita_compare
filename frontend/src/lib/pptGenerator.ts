@@ -8,7 +8,7 @@ import { COMPOS, WIDE_COMPOS } from "../config/compos";
 import { getSetPairing, pickPrimaryPhoto } from "../utils/derive";
 import { type CroppedImage, exportCroppedImage } from "./cropper";
 import { loadImageFromBlob } from "./pose";
-import { computePhotoSlideLayout, SLIDE_W } from "./slideLayout";
+import { computePhotoSlideLayout, SLIDE_H, SLIDE_W } from "./slideLayout";
 import type { StoredPhoto } from "./db";
 import type { BodyCompRowIn, Mode } from "../api/types";
 
@@ -29,7 +29,13 @@ function addGuideTag(slide: pptxgen.Slide, text: string): void {
 }
 
 function addPhotoAt(slide: pptxgen.Slide, dataUrl: string, x: number, y: number, w: number, h: number, dateText?: string): void {
-  slide.addImage({ data: dataUrl, x, y, w, h });
+  // sizing:"contain"을 명시한다 - x/y/w/h만 주면 데스크톱 파워포인트는 문제없이 그리지만,
+  // 일부 모바일 뷰어(파워포인트 모바일 등)는 배치 박스의 가로세로 비율과 이미지 자체의
+  // 실제 픽셀 비율을 따로 취급해서 눌린 것처럼 표시하는 경우가 있다(실사용 중 발견) -
+  // sizing을 명시하면 pptxgenjs가 이미지의 실제 크기를 읽어 비율 정보를 함께 기록해줘서
+  // 뷰어에 따라 달라지는 걸 막는다. 우리 쪽 배치 박스는 이미 크롭 이미지와 같은 비율로
+  // 계산돼 있어(computePhotoSlideLayout) letterbox 없이 꽉 채워진다.
+  slide.addImage({ data: dataUrl, x, y, w, h, sizing: { type: "contain", w, h } });
   if (dateText) {
     slide.addText(dateText, {
       x, y: y + h + 0.05, w, h: 0.35,
@@ -48,12 +54,14 @@ function addPhotoSlide(
   afterDate: string | undefined,
   showDates: boolean,
   wide: boolean,
+  beforeScale: number,
+  afterScale: number,
 ): void {
   const slide = pres.addSlide();
   addGuideTag(slide, `${num}. ${label}`);
 
   // components/PptSlidePreview.tsx가 크롭 화면에서 이 함수와 완전히 동일한 결과를 보여준다.
-  const layout = computePhotoSlideLayout(before, after, wide, showDates);
+  const layout = computePhotoSlideLayout(before, after, wide, showDates, beforeScale, afterScale);
 
   addPhotoAt(slide, before.dataUrl, layout.before.x, layout.before.y, layout.before.w, layout.before.h, showDates ? beforeDate : undefined);
   addPhotoAt(slide, after.dataUrl, layout.after.x, layout.after.y, layout.after.w, layout.after.h, showDates ? afterDate : undefined);
@@ -76,34 +84,75 @@ function formatChange(startText: string, endText: string): string {
   return `${sign}${diff}${unit}`;
 }
 
-function addBodyCompSlide(pres: pptxgen, rows: BodyCompRowIn[]): void {
-  const slide = pres.addSlide();
-  slide.addText("체성분 검사 변화", { x: 0.3, y: 0.2, w: 8, h: 0.6, fontSize: 24, bold: true, color: DARK });
+function formatCaptionDate(iso: string | undefined): string {
+  const d = iso ? new Date(iso) : new Date();
+  if (Number.isNaN(d.getTime())) return formatCaptionDate(undefined);
+  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
+}
 
-  const cols = ["항목", "시작", "중간", "마지막", "변화량", "목표치(적정치)"];
+const TABLE_FONT = "맑은 고딕";
+
+function addBodyCompSlide(pres: pptxgen, rows: BodyCompRowIn[], sessionDates: Record<string, string>): void {
+  const slide = pres.addSlide();
+  slide.addText("<체성분 검사 변화>", {
+    x: 0, y: 0.2, w: SLIDE_W, h: 0.6,
+    fontFace: TABLE_FONT, fontSize: 28, bold: true, color: DARK, align: "center",
+  });
+
+  // 헤더에 시작일/중간일/종료일 촬영일도 같이 보여준다. 중간일 데이터가 아예 없으면(표준모드,
+  // 장기모드라도 아직 안 채운 경우) 그 컬럼 자체를 뺀다.
+  const dateFor = (sessionType: string) => (sessionDates[sessionType] ? ` (${formatCaptionDate(sessionDates[sessionType])})` : "");
+  const hasMid = !!sessionDates.mid || rows.some((r) => !!r.mid && r.mid.trim() !== "");
+
+  interface ColDef {
+    header: string;
+    get: (row: BodyCompRowIn) => string;
+  }
+  const cols: ColDef[] = [
+    { header: "항목", get: (r) => r.label },
+    { header: `시작일${dateFor("start")}`, get: (r) => r.start ?? "" },
+    ...(hasMid ? [{ header: `중간일${dateFor("mid")}`, get: (r: BodyCompRowIn) => r.mid ?? "" }] : []),
+    { header: `종료일${dateFor("end")}`, get: (r) => r.end ?? "" },
+    { header: "변화량", get: (r) => formatChange(r.start, r.end) },
+    { header: "목표치(적정치)", get: (r) => r.target ?? "" },
+  ];
+  const changeColIdx = cols.length - 2;
+  const targetColIdx = cols.length - 1;
+
   const tableRows: pptxgen.TableRow[] = [
-    cols.map((c) => ({ text: c, options: { fill: { color: HEADER_FILL }, bold: true, fontSize: 13, color: DARK } })),
+    cols.map((c) => ({
+      text: c.header,
+      options: {
+        fill: { color: HEADER_FILL }, bold: true, fontFace: TABLE_FONT, fontSize: 14, color: DARK,
+        align: "center", valign: "middle",
+      },
+    })),
   ];
 
   for (const row of rows) {
-    const changeV = formatChange(row.start, row.end);
-    const values = [row.label, row.start ?? "", row.mid ?? "", row.end ?? "", changeV, row.target ?? ""];
     tableRows.push(
-      values.map((val, c) => ({
-        text: String(val ?? ""),
+      cols.map((c, i) => ({
+        text: c.get(row),
         options: {
-          fontSize: 12.5,
+          fontFace: TABLE_FONT,
+          fontSize: 14,
           color: row.highlight ? RED : DARK,
-          bold: c === 4,
-          ...(c === 5 ? { fill: { color: TARGET_FILL } } : {}),
+          bold: i === changeColIdx,
+          align: "center",
+          valign: "middle",
+          ...(i === targetColIdx ? { fill: { color: TARGET_FILL } } : {}),
         },
       })),
     );
   }
 
+  // 예전엔 가로로 너무 넓고 세로는 얇았다 - 폭을 줄이고 세로는 화면을 거의 꽉 채우게
+  // h(총 높이)를 지정해서 pptxgenjs가 행 높이를 자동으로 늘려 분배하게 한다.
+  const tableW = 9.5;
+  const tableY = 1.0;
+  const tableH = SLIDE_H - tableY - 0.3;
   slide.addTable(tableRows, {
-    x: 0.5, y: 1.0, w: SLIDE_W - 1.0,
-    rowH: 0.42,
+    x: (SLIDE_W - tableW) / 2, y: tableY, w: tableW, h: tableH,
     border: { type: "solid", color: LINE, pt: 0.5 },
   });
 }
@@ -189,12 +238,6 @@ export async function generatePresentation(
 
   const pairing = getSetPairing(mode);
 
-  function formatCaptionDate(iso: string | undefined): string {
-    const d = iso ? new Date(iso) : new Date();
-    if (Number.isNaN(d.getTime())) return formatCaptionDate(undefined);
-    return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
-  }
-
   onProgress?.({ progress: 0.85, message: "PPT 렌더링 중" });
 
   // LAYOUT_WIDE(내장 프리셋)가 정확히 13.333x7.5in(SLIDE_W/SLIDE_H)와 같다 - defineLayout()으로
@@ -223,12 +266,13 @@ export async function generatePresentation(
         pres, num, label, before, after,
         formatCaptionDate(sessionDates[beforeType]), formatCaptionDate(sessionDates[afterType]),
         showDates, wide,
+        beforeRec.slide_scale ?? 1, afterRec.slide_scale ?? 1,
       );
       firstSlideDone = true;
     }
   }
 
-  addBodyCompSlide(pres, bodyCompRows);
+  addBodyCompSlide(pres, bodyCompRows, sessionDates);
 
   onProgress?.({ progress: 0.95, message: "파일 저장 중" });
   const rawBlob = (await pres.write({ outputType: "blob" })) as Blob;

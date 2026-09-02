@@ -28,7 +28,9 @@ export function WizardLayout() {
   // 업로드 화면은 사진 그리드가 아니라 순차 입력 폼이라 좁은 폭이 더 잘 어울린다 - 그 폭에
   // 헤더(로고+스텝 인디케이터)도 같이 맞춰서 헤더만 넓고 본문만 좁아 보이는 어긋남을 없앤다.
   // 다른 스텝(옵션선택/크롭 등)은 사진을 나란히 비교해야 해서 기존 넓은 폭을 유지한다.
-  const containerMaxWidth = currentStep === "upload" ? "max-w-xl" : "max-w-5xl";
+  // 크롭 단계는 사진 두 장 + PPT 미리보기 패널이 한 화면에 같이 들어가야 해서 다른 스텝보다
+  // 더 넓게 잡는다 - 사진이 잘 안 보인다는 피드백 반영.
+  const containerMaxWidth = currentStep === "upload" ? "max-w-xl" : currentStep === "crop" ? "max-w-7xl" : "max-w-5xl";
 
   return (
     <div className={`mx-auto ${containerMaxWidth} px-4 pb-16 transition-[max-width]`}>

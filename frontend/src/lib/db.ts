@@ -56,6 +56,8 @@ export interface StoredPhoto {
   pose_error: boolean;
   // PPT 슬라이드 안에서의 크기 배율(1.0 = 화면 꽉 차게 자동 맞춤) - 크롭 화면에서 조정.
   slide_scale: number;
+  // 전/후 사진을 가운데서 좌우로 얼마나 더 벌릴지(in) - 크기를 키우면 겹쳐 보이는 문제 보정용.
+  slide_spread: number;
   blob: Blob;
 }
 
@@ -133,6 +135,7 @@ export function photoToOut(record: StoredPhoto, duplicate: boolean): PhotoOut {
     thumbnail_url: getObjectUrl(record.photo_id, record.blob),
     duplicate,
     slide_scale: record.slide_scale ?? 1,
+    slide_spread: record.slide_spread ?? 0,
   };
 }
 
@@ -260,6 +263,7 @@ export async function uploadPhotos(
       option_confirmed: false,
       pose_error: false,
       slide_scale: 1,
+      slide_spread: 0,
       blob: f,
     };
     created.push(record);
@@ -381,6 +385,7 @@ export async function patchPhoto(sessionId: string, photoId: string, patch: Phot
 
   if (patch.option_confirmed !== undefined) record.option_confirmed = patch.option_confirmed;
   if (patch.slide_scale !== undefined) record.slide_scale = patch.slide_scale;
+  if (patch.slide_spread !== undefined) record.slide_spread = patch.slide_spread;
 
   await db.put("photos", record);
 

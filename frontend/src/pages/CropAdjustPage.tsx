@@ -18,6 +18,8 @@ interface EditState {
   cropBox: CropBox;
   // PPT 슬라이드 안에서 이 사진이 표시될 크기 배율 (1.0 = 화면 꽉 차게 자동 맞춤).
   slideScale: number;
+  // 전/후 두 사진을 가운데서 좌우로 얼마나 더 벌릴지(in) - 크기를 키우면 겹쳐 보이는 문제 보정용.
+  slideSpread: number;
 }
 
 interface CropUnit {
@@ -111,7 +113,12 @@ export function CropAdjustPage() {
       const next = { ...prev };
       for (const p of currentPhotos) {
         if (!next[p.photo_id]) {
-          next[p.photo_id] = { rotationDeg: p.rotation_deg, cropBox: p.crop_box, slideScale: p.slide_scale ?? 1 };
+          next[p.photo_id] = {
+            rotationDeg: p.rotation_deg,
+            cropBox: p.crop_box,
+            slideScale: p.slide_scale ?? 1,
+            slideSpread: p.slide_spread ?? 0,
+          };
         }
       }
       return next;
@@ -186,6 +193,21 @@ export function CropAdjustPage() {
     });
   }
 
+  // 이미지 크기를 키우면 두 사진이 가운데서 서로 겹쳐 보일 수 있어, 좌우로 벌리는 간격도
+  // 슬라이더 하나로 양쪽에 같이 적용한다.
+  function handleSlideSpreadChange(spread: number) {
+    setEdits((prev) => {
+      const next = { ...prev };
+      if (beforePhoto && next[beforePhoto.photo_id]) {
+        next[beforePhoto.photo_id] = { ...next[beforePhoto.photo_id], slideSpread: spread };
+      }
+      if (afterPhoto && next[afterPhoto.photo_id]) {
+        next[afterPhoto.photo_id] = { ...next[afterPhoto.photo_id], slideSpread: spread };
+      }
+      return next;
+    });
+  }
+
   if (photosQuery.isLoading) return <p className="py-8 text-sm text-neutral-400">불러오는 중...</p>;
   if (allPhotos.length === 0) {
     return <p className="py-8 text-sm text-neutral-500">업로드된 사진이 없습니다. 이전 단계로 돌아가주세요.</p>;
@@ -217,6 +239,7 @@ export function CropAdjustPage() {
           manually_confirmed: true,
           sync_size: false,
           slide_scale: edit.slideScale,
+          slide_spread: edit.slideSpread,
         },
       });
     }
@@ -338,6 +361,44 @@ export function CropAdjustPage() {
                     disabled={(edits[(beforePhoto ?? afterPhoto)!.photo_id]?.slideScale ?? 1) >= 2}
                     className="flex h-6 w-6 items-center justify-center rounded border border-neutral-300 text-sm leading-none text-neutral-600 disabled:opacity-30"
                     aria-label="이미지 크기 확대"
+                  >
+                    ＋
+                  </button>
+                </div>
+              </div>
+            )}
+            {/* 이미지 크기를 키우면(위 컨트롤에서 100% 초과) 두 사진이 가운데서 서로 겹쳐 보일
+                수 있어, 좌우로 벌리는 간격을 따로 조절할 수 있게 한다. */}
+            {(beforePhoto || afterPhoto) && (
+              <div className="flex items-center gap-2 text-[11px] text-neutral-500">
+                <span>이미지 간격 벌리기</span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleSlideSpreadChange(
+                        Math.max(0, +((edits[(beforePhoto ?? afterPhoto)!.photo_id]?.slideSpread ?? 0) - 0.2).toFixed(2)),
+                      )
+                    }
+                    disabled={(edits[(beforePhoto ?? afterPhoto)!.photo_id]?.slideSpread ?? 0) <= 0}
+                    className="flex h-6 w-6 items-center justify-center rounded border border-neutral-300 text-sm leading-none text-neutral-600 disabled:opacity-30"
+                    aria-label="이미지 간격 좁히기"
+                  >
+                    −
+                  </button>
+                  <span className="w-10 text-center tabular-nums">
+                    {(edits[(beforePhoto ?? afterPhoto)!.photo_id]?.slideSpread ?? 0).toFixed(1)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleSlideSpreadChange(
+                        Math.min(3, +((edits[(beforePhoto ?? afterPhoto)!.photo_id]?.slideSpread ?? 0) + 0.2).toFixed(2)),
+                      )
+                    }
+                    disabled={(edits[(beforePhoto ?? afterPhoto)!.photo_id]?.slideSpread ?? 0) >= 3}
+                    className="flex h-6 w-6 items-center justify-center rounded border border-neutral-300 text-sm leading-none text-neutral-600 disabled:opacity-30"
+                    aria-label="이미지 간격 넓히기"
                   >
                     ＋
                   </button>

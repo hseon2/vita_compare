@@ -46,6 +46,9 @@ export interface PhotoOut {
   // PPT 슬라이드에 실제로 들어갈 크기 배율(1.0 = 화면에 꽉 차게 자동 맞춤, 작을수록 슬라이드
   // 안에서 작게 표시됨) - 백엔드 스키마엔 없는 프론트 전용 필드.
   slide_scale: number;
+  // 전/후 두 사진을 가운데(세로 중심선)에서 좌우로 얼마나 더 벌려 놓을지(in, 0=자동 배치
+  // 그대로) - 이미지 크기를 키우면 서로 겹쳐 보이는 문제를 이걸로 보정한다.
+  slide_spread: number;
 }
 
 export interface PhotosGroupedResponse {
@@ -73,6 +76,7 @@ export interface PhotoPatchRequest {
   option_confirmed?: boolean;
   sync_size?: boolean; // 서버 기본값 true
   slide_scale?: number;
+  slide_spread?: number;
 }
 
 export interface BodyCompRowIn {

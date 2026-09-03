@@ -56,12 +56,13 @@ function addPhotoSlide(
   wide: boolean,
   beforeScale: number,
   afterScale: number,
+  spread: number,
 ): void {
   const slide = pres.addSlide();
   addGuideTag(slide, `${num}. ${label}`);
 
   // components/PptSlidePreview.tsx가 크롭 화면에서 이 함수와 완전히 동일한 결과를 보여준다.
-  const layout = computePhotoSlideLayout(before, after, wide, showDates, beforeScale, afterScale);
+  const layout = computePhotoSlideLayout(before, after, wide, showDates, beforeScale, afterScale, spread);
 
   addPhotoAt(slide, before.dataUrl, layout.before.x, layout.before.y, layout.before.w, layout.before.h, showDates ? beforeDate : undefined);
   addPhotoAt(slide, after.dataUrl, layout.after.x, layout.after.y, layout.after.w, layout.after.h, showDates ? afterDate : undefined);
@@ -267,6 +268,7 @@ export async function generatePresentation(
         formatCaptionDate(sessionDates[beforeType]), formatCaptionDate(sessionDates[afterType]),
         showDates, wide,
         beforeRec.slide_scale ?? 1, afterRec.slide_scale ?? 1,
+        beforeRec.slide_spread ?? afterRec.slide_spread ?? 0,
       );
       firstSlideDone = true;
     }

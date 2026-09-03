@@ -8,6 +8,7 @@ interface EditState {
   rotationDeg: number;
   cropBox: CropBox;
   slideScale?: number;
+  slideSpread?: number;
 }
 
 interface PptSlidePreviewProps {
@@ -61,6 +62,7 @@ export function PptSlidePreview({ composId, beforePhoto, afterPhoto, beforeEdit,
     false,
     beforeEdit?.slideScale ?? 1,
     afterEdit?.slideScale ?? 1,
+    beforeEdit?.slideSpread ?? afterEdit?.slideSpread ?? 0,
   );
 
   return (

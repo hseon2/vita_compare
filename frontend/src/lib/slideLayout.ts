@@ -36,10 +36,21 @@ function scaleAroundCenter(p: PlacedPhoto, scale: number): PlacedPhoto {
   return { x: cx - w / 2, y: cy - h / 2, w, h };
 }
 
+/** 전/후 사진을 가운데(둘 사이 중심선)에서 좌우로 spread(in)만큼 더 떨어뜨린다 - 이미지 크기를
+ * 키우면(scale>1) 서로 겹쳐 보일 수 있어, 그걸 보정하는 용도. y는 그대로 둔다. */
+function applySpread(before: PlacedPhoto, after: PlacedPhoto, spread: number): PhotoSlideLayout {
+  if (spread === 0) return { before, after };
+  return {
+    before: { ...before, x: before.x - spread / 2 },
+    after: { ...after, x: after.x + spread / 2 },
+  };
+}
+
 /** wide=false: 실제 렌더 크기끼리 딱 붙여서 중앙 배치 (박스 안에서 비율유지만 하면 세로형
  * 사진 특성상 양옆 여백이 커져 사진 사이가 떨어져 보임). wide=true(5·15번 팔벌림): 대각선
  * 배치 - 전 사진은 좌측상단, 후 사진은 우측하단.
- * beforeScale/afterScale: 자동으로 꽉 채운 크기에서 각각 이 배율만큼 더 줄인다(기본 1 = 그대로). */
+ * beforeScale/afterScale: 자동으로 꽉 채운 크기에서 각각 이 배율만큼 더 줄인다(기본 1 = 그대로).
+ * spread: 두 사진을 가운데서 좌우로 이만큼(in) 더 벌린다(기본 0 = 자동 배치 그대로). */
 export function computePhotoSlideLayout(
   beforeSize: { width: number; height: number },
   afterSize: { width: number; height: number },
@@ -47,6 +58,7 @@ export function computePhotoSlideLayout(
   showDates: boolean,
   beforeScale = 1,
   afterScale = 1,
+  spread = 0,
 ): PhotoSlideLayout {
   // 사진이 더 크게 꽉 차게 들어갔으면 좋겠다는 피드백 반영 - 좌측상단 구도 태그(y 0.2~0.7in)와
   // 겹치지 않는 선에서 여백을 최대한 줄였다.
@@ -63,10 +75,11 @@ export function computePhotoSlideLayout(
     const diagBoxH = availH * 0.72;
     const b = fitBox(beforeSize.width, beforeSize.height, diagBoxW, diagBoxH);
     const a = fitBox(afterSize.width, afterSize.height, diagBoxW, diagBoxH);
-    return {
-      before: scaleAroundCenter({ x: sideMargin, y: topMargin, ...b }, beforeScale),
-      after: scaleAroundCenter({ x: sideMargin + availW - a.w, y: topMargin + availH - a.h, ...a }, afterScale),
-    };
+    return applySpread(
+      scaleAroundCenter({ x: sideMargin, y: topMargin, ...b }, beforeScale),
+      scaleAroundCenter({ x: sideMargin + availW - a.w, y: topMargin + availH - a.h, ...a }, afterScale),
+      spread,
+    );
   }
 
   let b = fitBox(beforeSize.width, beforeSize.height, availW, availH);
@@ -83,8 +96,9 @@ export function computePhotoSlideLayout(
   const beforeY = topMargin + (availH - b.h) / 2;
   const afterY = topMargin + (availH - a.h) / 2;
 
-  return {
-    before: scaleAroundCenter({ x: startX, y: beforeY, ...b }, beforeScale),
-    after: scaleAroundCenter({ x: startX + b.w + gap, y: afterY, ...a }, afterScale),
-  };
+  return applySpread(
+    scaleAroundCenter({ x: startX, y: beforeY, ...b }, beforeScale),
+    scaleAroundCenter({ x: startX + b.w + gap, y: afterY, ...a }, afterScale),
+    spread,
+  );
 }
